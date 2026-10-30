@@ -1,8 +1,8 @@
 // 엄마의 대청소날~ — 화면 흐름 · 접속 · 대기실
-import { PROTO, MAPS, CFG } from './shared.js?v=5';
-import { audioInit, setVol, S, bgm } from './sfx.js?v=5';
-import { Editor, loadLook, saveLook } from './editor.js?v=5';
-import { Game } from './game.js?v=5';
+import { PROTO, MAPS, CFG } from './shared.js?v=6';
+import { audioInit, setVol, S, bgm } from './sfx.js?v=6';
+import { Editor, loadLook, saveLook } from './editor.js?v=6';
+import { Game } from './game.js?v=6';
 
 const $ = id => document.getElementById(id);
 const LS = {
@@ -81,7 +81,7 @@ $('mQuick').onclick = () => { S.click(); if (needName()) return; show('sQuick');
 $('mCreate').onclick = async () => { S.click(); if (needName()) return; createRoom(); };
 $('mCode').onclick = () => { S.click(); if (needName()) return; $('codeErr').textContent = ''; $('codeIn').value = ''; modal('mdCode'); setTimeout(() => $('codeIn').focus(), 50); };
 $('mEdit').onclick = () => { S.click(); openEditor(); };
-$('mPrac').onclick = () => { S.click(); startPractice(); };
+$('mPrac').onclick = () => { S.click(); openPrac(); };
 $('mSet').onclick = () => { S.click(); openSettings(); };
 $('codeIn').oninput = () => { $('codeIn').value = $('codeIn').value.toUpperCase().replace(/[^A-Z]/g, ''); };
 $('codeF').onsubmit = e => {
@@ -285,9 +285,29 @@ function openEditor() {
 }
 
 // ───────── 혼자 연습 ─────────
-function startPractice() {
+const PR = Object.assign({ map: 'room', role: 'toy', bots: 4, diff: 'easy', modes: {} }, LS.get('prac', {}));
+const PMODES = [['pBlink', 'blink'], ['pBreath', 'breath'], ['pSqFast', 'sqFast'], ['pFzLimit', 'fzLimit']];
+function pracSync() {
+  const role = (document.querySelector('input[name=pRole]:checked') || {}).value || 'toy';
+  $('pMomOpt').style.display = role === 'mom' ? '' : 'none';
+  $('pRoleHint').textContent = role === 'mom' ? '봇 장난감들이 숨어 있어요. 4분 안에 다 찾아 봐요!' : '자유롭게 변신해 보고, R(👀 엄마 눈)로 엄마한테 어떻게 보이는지 확인해요.';
+}
+function openPrac() {
+  $('pMap').value = PR.map; $('pBots').value = String(PR.bots); $('pDiff').value = PR.diff;
+  for (const r of document.querySelectorAll('input[name=pRole]')) { r.checked = r.value === PR.role; r.onchange = pracSync; }
+  for (const [id, k] of PMODES) $(id).checked = !!PR.modes[k];
+  pracSync(); modal('mdPrac');
+}
+$('pGo').onclick = () => {
+  PR.map = $('pMap').value; PR.role = (document.querySelector('input[name=pRole]:checked') || {}).value || 'toy';
+  PR.bots = +$('pBots').value; PR.diff = $('pDiff').value;
+  PR.modes = {}; for (const [id, k] of PMODES) PR.modes[k] = $(id).checked;
+  LS.set('prac', PR); modal('mdPrac', false); S.click(); startPractice(PR);
+};
+function startPractice(o) {
   endGame(); $('gameRoot').classList.add('on'); bgm(null);
-  game = new Game({ root: $('gameRoot'), practice: true, settings: ST, start: null, net: null, onQuit: () => { endGame(); show('sTitle'); } });
+  const opt = JSON.parse(JSON.stringify(o));
+  game = new Game({ root: $('gameRoot'), practice: opt, settings: ST, start: null, net: null, onQuit: () => { endGame(); show('sTitle'); }, onRetry: () => startPractice(opt) });
 }
 
 // ───────── 설정 ─────────

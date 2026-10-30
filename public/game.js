@@ -1,9 +1,9 @@
 // 엄마의 대청소날~ — 게임 화면 (레이캐스터 · 조작 · HUD)
-import { CFG, OBJ, DECOR, MAPS, MAP_IDS, genWorld, collide, solid, speedOf, roomName, WALL_H, formInfo, formReach, formRadius } from './shared.js?v=5';
-import { THREE, buildObj, buildDecor, buildForm, buildRobot, buildToyBox, mergeStatic, objHeight, ROBOT_H } from './models.js?v=5';
-import { toyColor } from './sprites.js?v=5';
-import { S, bgm, audioInit } from './sfx.js?v=5';
-import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=5';
+import { CFG, OBJ, DECOR, MAPS, MAP_IDS, genWorld, collide, solid, speedOf, roomName, WALL_H, formInfo, formReach, formRadius, objR } from './shared.js?v=6';
+import { THREE, buildObj, buildDecor, buildForm, buildRobot, buildToyBox, mergeStatic, objHeight, ROBOT_H } from './models.js?v=6';
+import { toyColor } from './sprites.js?v=6';
+import { S, bgm, audioInit } from './sfx.js?v=6';
+import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=6';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -36,8 +36,10 @@ const THEMES = {
 };
 
 export class Game {
-  constructor({ root, net, start, settings, lobby, onQuit, practice }) {
-    this.root = root; this.net = net; this.ST = settings; this.onQuit = onQuit; this.practice = !!practice;
+  constructor({ root, net, start, settings, lobby, onQuit, onRetry, practice }) {
+    this.root = root; this.net = net; this.ST = settings; this.onQuit = onQuit; this.onRetry = onRetry; this.practice = !!practice;
+    this.popt = practice && typeof practice === 'object' ? practice : { map: 'room', role: 'toy', modes: {} };
+    this.pracRole = this.practice ? this.popt.role : null;
     this.alive = true;
     this.build();
     if (practice) this.initPractice(); else this.init(start);
@@ -182,14 +184,150 @@ export class Game {
     bgm(this.ph === 'prep' ? 'title' : 'game');
   }
   initPractice() {
-    this.me = 'me'; this.setWorld(MAP_IDS[0], Math.random() * 1e9 | 0);
-    this.P = new Map([['me', { id: 'me', name: '나', role: 'toy', x: this.M.toy[0], z: this.M.toy[1], a: 0, form: null, fl: 0, buf: [], col: toyColor(0), look: null }]]);
-    this.role = 'toy'; this.ph = 'hunt'; this.tLeft = 0; this.tAt = performance.now(); this.yaw = Math.PI; this.pitch = -.35; this.bodyYaw = this.yaw;
-    this.frozen = false; this.stam = CFG.STAMINA; this.vacCd = 0; this.restT = 0; this.sqLeft = 99; this.modes = {}; this.sqPeriod = CFG.SQUEAK;
-    this.pracMom = false; this.pracBody = null;
-    this.banner('🧸 혼자 연습하기', isPhone ? '변신해 보고, 👀 엄마 눈으로 어떻게 보이는지 확인해요' : 'E 변신 · Q 원래대로 · Shift 얼음 · R 엄마 눈으로 보기 · M 맵 바꾸기', 6);
+    const o = this.popt, R = Math.random;
+    this.me = 'me'; this.setWorld(MAPS[o.map] ? o.map : 'room', R() * 1e9 | 0);
+    this.modes = o.modes || {}; this.sqPeriod = this.modes.sqFast ? 20 : CFG.SQUEAK;
+    this.frozen = false; this.stam = CFG.STAMINA; this.vacCd = 0; this.vacF = 0; this.restT = 0; this.regenF = 0;
+    this.ph = 'hunt'; this.tAt = performance.now(); this.pracMom = false;
+    const M = this.M;
+    if (o.role === 'mom') {
+      this.role = 'mom'; this.tLeft = CFG.HUNT; this.yaw = 0; this.pitch = -.15;
+      this.P = new Map([['me', { id: 'me', name: '나', role: 'mom', x: M.mom[0], z: M.mom[1], a: 0, form: null, fl: 0, buf: [], col: '#888', look: loadLook() }]]);
+      this.spawnBots(Math.max(1, Math.min(6, o.bots | 0 || 4)), o.diff === 'hard' ? 'hard' : 'easy');
+      this.pst = { miss: 0, found: 0, t0: performance.now(), n: [...this.P.values()].filter(p => p.bot).length };
+      this.banner('🧹 엄마 연습', `봇 장난감 ${this.pst.n}마리가 숨었어요. 4분 안에 다 찾아요!`, 4);
+    } else {
+      this.role = 'toy'; this.tLeft = 0; this.yaw = Math.PI; this.pitch = -.35;
+      this.P = new Map([['me', { id: 'me', name: '나', role: 'toy', x: M.toy[0], z: M.toy[1], a: 0, form: null, fl: 0, buf: [], col: toyColor(0), look: null }]]);
+      this.sqF = this.sqPeriod; this.sqLeft = this.sqPeriod;
+      this.banner('🧸 장난감 연습', isPhone ? '변신해 보고, 👀 엄마 눈으로 어떻게 보이는지 확인해요' : 'E 변신 · Q 원래대로 · Shift 얼음 · R 엄마 눈으로 보기', 5);
+    }
+    this.bodyYaw = this.yaw;
     bgm('game');
   }
+
+  // ───────── 엄마 연습: 봇 장난감 ─────────
+  spawnBots(n, diff) {
+    const names = ['곰돌이', '깡통로봇', '고무오리', '토끼', '꼬마공룡', '펭귄'];
+    for (let k = 0; k < n; k++) {
+      let sp = null; for (let t = 0; t < 300 && !sp; t++) sp = this.botSpot(diff);
+      if (!sp) continue;
+      const id = 'bot' + k;
+      this.P.set(id, { id, name: names[k], role: 'toy', x: sp.x, z: sp.z, a: sp.a, form: sp.f, fl: diff === 'hard' ? 1 : 0, buf: [], col: toyColor(k + 1),
+        bot: { diff, sqT: this.sqPeriod * (.3 + Math.random() * .7), moveT: 12 + Math.random() * 18, tgt: null, fzT: Math.random() * 20, stuck: 0 }, t0: performance.now() });
+    }
+  }
+  // 물건(70%)이나 가구(30%) 하나를 골라 그 옆에 같은 모습으로. 쉬움은 절반쯤 아무 데나
+  botSpot(diff, near) {
+    const R = Math.random, W = this.Wd, M = this.M;
+    const useDec = R() < .3, src = useDec ? W.decor[R() * W.decor.length | 0] : W.objs[R() * W.objs.length | 0];
+    if (!src) return null;
+    const f = src.t, myR = DECOR[f] ? Math.max(DECOR[f].w, DECOR[f].d) / 2 : objR(f);
+    let x, z;
+    if (diff === 'easy' && R() < .5) {
+      if (near) { x = near.x + (R() - .5) * 10; z = near.z + (R() - .5) * 10; } else { x = 1 + R() * (W.W - 2); z = 1 + R() * (W.H - 2); }
+    } else {
+      const ang = R() * TAU, d = (useDec ? Math.max(src.hw, src.hd) : src.r) + myR + .08;
+      x = src.x + Math.cos(ang) * d; z = src.z + Math.sin(ang) * d;
+    }
+    return this.botOk(x, z, f, null) ? { x, z, f, a: R() * TAU } : null;
+  }
+  botOk(x, z, f, self) {
+    const W = this.Wd, M = this.M, r = DECOR[f] ? Math.max(DECOR[f].w, DECOR[f].d) / 2 : Math.max(.15, objR(f));
+    if (x < 1 || z < 1 || x > W.W - 1 || z > W.H - 1) return false;
+    for (const [dx, dz] of [[r, r], [-r, r], [r, -r], [-r, -r], [0, 0]]) if (solid(M, x + dx, z + dz)) return false;
+    for (const d of W.decor) if (Math.abs(x - d.x) < d.hw + r && Math.abs(z - d.z) < d.hd + r) return false;
+    for (const o of W.objs) if (Math.hypot(x - o.x, z - o.z) < o.r + r * .8) return false;
+    for (const p of this.P.values()) if (p !== self && p.bot && Math.hypot(x - p.x, z - p.z) < 1) return false;
+    if (Math.hypot(x - M.mom[0], z - M.mom[1]) < 4 || Math.hypot(x - M.box[0], z - M.box[1]) < 1.5) return false;
+    return true;
+  }
+  pracTick(dt) {
+    const now = performance.now(), me = this.myP();
+    if (this.pracRole === 'toy') { // 삑! 연습
+      this.sqF -= dt; this.sqLeft = Math.max(0, Math.ceil(this.sqF));
+      if (this.sqF <= 0) { this.sqF = this.sqPeriod; this.onEv({ e: 'sq', id: 'me', x: me.x, z: me.z }); }
+      return;
+    }
+    if (this.ended) return;
+    // 엄마: 쉬기 · 스펀지 회복 · 청소기
+    if (this.restT > 0) { this.restT -= dt; if (this.restT <= 0) { this.restT = 0; this.stam = CFG.STAMINA; this.say('다시 힘이 났어요!'); } }
+    else if (this.stam < CFG.STAMINA) { this.regenF += dt; if (this.regenF >= CFG.STAM_REGEN) { this.regenF = 0; this.stam++; } }
+    if (this.vacF > 0) { this.vacF -= dt; this.vacCd = Math.max(0, Math.ceil(this.vacF)); }
+    // 봇
+    for (const b of this.P.values()) {
+      if (!b.bot || b.caught) continue;
+      const B = b.bot;
+      B.sqT -= dt; if (B.sqT <= 0) { B.sqT = this.sqPeriod; this.onEv({ e: 'sq', id: b.id, x: b.x, z: b.z }); }
+      const dMom = Math.hypot(b.x - me.x, b.z - me.z);
+      if (B.diff === 'hard') {
+        // 얼음 (얼음 제한 모드면 20초 얼음, 5초 땡)
+        let fz = true; if (this.modes.fzLimit) { B.fzT = (B.fzT + dt) % 25; fz = B.fzT < 20; }
+        b.fl = fz ? 1 : 0; continue;
+      }
+      // 쉬움: 흔들흔들, 엄마가 멀면 가끔 이사
+      let mv = false;
+      B.moveT -= dt;
+      if (!B.tgt && B.moveT <= 0) { B.moveT = 15 + Math.random() * 20; if (dMom > 6) { for (let t = 0; t < 60 && !B.tgt; t++) { const sp = this.botSpot('easy', b); if (sp && sp.f === b.form) B.tgt = sp; else if (sp && t > 40) B.tgt = { x: sp.x, z: sp.z, f: b.form }; } } }
+      if (B.tgt) {
+        const dx = B.tgt.x - b.x, dz = B.tgt.z - b.z, d = Math.hypot(dx, dz);
+        if (d < .08 || dMom < 3.5 || B.stuck > 1.2) { B.tgt = null; B.stuck = 0; }
+        else {
+          const sp = Math.min(d, speedOf('toy', b.form) * dt), small = formInfo(b.form).s === 's';
+          const [x, z] = collide(this.Wd, b.x, b.z, b.x + dx / d * sp, b.z + dz / d * sp, formRadius(b.form), small, true);
+          if (Math.hypot(x - b.x, z - b.z) < sp * .3) B.stuck += dt; else B.stuck = 0;
+          b.x = x; b.z = z; b.a = Math.atan2(dz, dx); mv = true;
+        }
+      }
+      b.fl = mv ? 2 : 0;
+    }
+    if (this.timeLeft() <= 0) this.pracEnd('toy');
+  }
+  pracGrab() {
+    if (this.restT > 0) { this.say('헉헉… 쉬는 중'); return; }
+    const pk = this.pick; this.hand = 1; S.grab();
+    if (!pk || pk.k === 'b' || pk.d > CFG.GRAB_RANGE) { if (pk && pk.k !== 'b') this.say('손이 안 닿아요. 더 가까이!'); return; }
+    let t = pk.k === 'p' ? this.P.get(pk.id) : null;
+    if (pk.k === 'o') { const o = this.Wd.objs[pk.i]; t = [...this.P.values()].find(p => p.bot && !p.caught && Math.hypot(p.x - o.x, p.z - o.z) < o.r + .15) || null; }
+    if (t && t.bot && !t.caught) {
+      t.caught = true; t.caughtAt = performance.now(); t.spot = { x: Math.round(t.x * 100) / 100, z: Math.round(t.z * 100) / 100, f: t.form, room: roomName(this.M, t.x, t.z) };
+      this.pst.found++; S.caught(); S.win(); this.banner('찾았다!', `${t.name}${t.form ? ` (${formInfo(t.form).n})` : ''}`, 1.4);
+      this.addFeed(`🧹 ${t.name}${t.form ? `(${formInfo(t.form).n})` : ''}를 치웠어요!`); this.fx.push({ k: 'grab', x: t.x, z: t.z, t: 0 });
+      if ([...this.P.values()].every(p => !p.bot || p.caught)) setTimeout(() => this.pracEnd('mom'), 900);
+      return;
+    }
+    if (pk.k === 'o' || pk.k === 'd') {
+      const ob = pk.k === 'o' ? this.Wd.objs[pk.i] : this.Wd.decor[pk.i];
+      this.pst.miss++; this.stam--; this.regenF = 0; S.miss(); this.doShake(.25); this.say(`헛손질! 진짜 ${formInfo(ob.t).n}이었어요`);
+      this.fx.push({ k: 'miss', x: ob.x, z: ob.z, t: 0 });
+      if (this.stam <= 0) { this.stam = 0; this.restT = CFG.REST; S.tired(); this.banner('헉… 헉…', '헛손질을 너무 많이 했어요. 3초 쉬어요', 2.6); }
+    }
+  }
+  pracVac() {
+    if (this.restT > 0) return;
+    if (this.vacF > 0) { this.say(`청소기는 ${Math.ceil(this.vacF)}초 뒤에 써요`); return; }
+    this.vacF = CFG.VAC_CD; this.vacCd = CFG.VAC_CD;
+    const me = this.myP(), hit = [];
+    for (const b of this.P.values()) {
+      if (!b.bot || b.caught) continue;
+      const dx = me.x - b.x, dz = me.z - b.z, d = Math.hypot(dx, dz); if (d >= CFG.VAC_R) continue;
+      hit.push(b.id); b.bot.sqT = this.sqPeriod;
+      const k = Math.min(.9, d - .6); if (k > 0) { const [x, z] = collide(this.Wd, b.x, b.z, b.x + dx / d * k, b.z + dz / d * k, formRadius(b.form), formInfo(b.form).s === 's', true); b.x = x; b.z = z; }
+      this.onEv({ e: 'sq', id: b.id, x: b.x, z: b.z, v: 1 });
+    }
+    this.onEv({ e: 'vac', id: 'me', x: me.x, z: me.z, hit });
+  }
+  pracEnd(win) {
+    if (this.ended) return;
+    const now = performance.now(), bots = [...this.P.values()].filter(p => p.bot), el = (now - this.pst.t0) / 1000;
+    this.onEnd({
+      win, why: `찾은 봇 ${this.pst.found} / ${bots.length} · ${fmtT(el)} · 헛손질 ${this.pst.miss}번`, map: this.mapId,
+      toys: bots.map(b => ({ id: b.id, name: b.name, caught: !!b.caught, surv: ((b.caughtAt || now) - b.t0) / 1000, rescues: 0, caughtN: b.caught ? 1 : 0,
+        spot: b.caught ? b.spot : { x: b.x, z: b.z, f: b.form, room: roomName(this.M, b.x, b.z) } })),
+      moms: [{ id: 'me', name: '나', catches: this.pst.found, miss: this.pst.miss, look: loadLook() }]
+    });
+  }
+
   setLook(id, v) {
     const p = this.P.get(id); if (!p) return;
     p.look = v; p.lookCv = lookToCanvas(v || defaultLook());
@@ -283,8 +421,7 @@ export class Game {
     if (k === 'ShiftLeft' || k === 'ShiftRight') this.toggleFreeze();
     if (k === 'KeyG') this.sign();
     if (k === 'Space') { e.preventDefault(); this.vacuum(); }
-    if (k === 'KeyR' && this.practice) this.pracSwap();
-    if (k === 'KeyM' && this.practice) this.pracMap();
+    if (k === 'KeyR' && this.practice && this.pracRole === 'toy') this.pracSwap();
     if ((k === 'ArrowRight' || k === 'ArrowLeft') && this.isSpec()) this.nextSpec(k === 'ArrowRight' ? 1 : -1);
   }
   touchUI() {
@@ -324,7 +461,7 @@ export class Game {
       vac: mkb('🌀 청소기', () => this.vacuum()),
       menu: mkb('☰', () => this.showMenu())
     };
-    if (this.practice) { this.tb.eye = mkb('👀 엄마 눈', () => this.pracSwap()); this.tb.map = mkb('🗺️ 맵', () => this.pracMap()); }
+    if (this.practice && this.pracRole === 'toy') this.tb.eye = mkb('👀 엄마 눈', () => this.pracSwap());
     const help = document.createElement('button'); help.textContent = '? 설명';
     help.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);top:58px;z-index:3;font:15px Jua;padding:4px 12px;border-radius:12px;border:3px solid #4a2c1d;background:#fffaf0;color:#4a2c1d';
     help.onclick = () => { this.cardOn = !this.cardOn; this.drawCard(); }; this.root.append(help);
@@ -411,13 +548,14 @@ export class Game {
   }
   vacuum() {
     if (this.role !== 'mom' || this.ph !== 'hunt' || this.restT > 0) return;
-    if (this.practice) return;
+    if (this.practice) { if (this.pracRole === 'mom') this.pracVac(); return; }
     if (this.vacCd > 0) { this.say(`청소기는 ${this.vacCd}초 뒤에 써요`); return; }
     this.net.send({ type: 'vac' });
   }
   primary() {
     if (this.isSpec()) { this.nextSpec(1); return; }
     if (this.role !== 'mom') return;
+    if (this.practice && this.pracRole === 'mom') { if (!this.ended) this.pracGrab(); return; }
     if (this.practice) { this.hand = 1; S.grab(); const pk = this.pick; if (pk && pk.k === 'p' && pk.d < CFG.GRAB_RANGE) { this.banner('찾았다!', '엄마 눈에는 이렇게 보여요', 2); S.caught(); } else if (pk && (pk.k === 'o' || pk.k === 'd') && pk.d < CFG.GRAB_RANGE) { const ob = pk.k === 'o' ? this.Wd.objs[pk.i] : this.Wd.decor[pk.i]; this.say('그건 진짜 ' + formInfo(ob.t).n + '이에요'); S.miss(); } return; }
     if (this.ph !== 'hunt') return;
     if (this.restT > 0) { this.say('헉헉… 쉬는 중'); return; }
@@ -571,6 +709,7 @@ export class Game {
   }
   update(dt, t) {
     this.dt = dt;
+    if (this.practice) this.pracTick(dt);
     // 얼음 제한 모드: 20초 지나면 저절로 땡
     if (this.frozen && this.modes.fzLimit && t - this.frozenAt > 20000) { this.frozen = false; this.fzCd = t + 5000; S.tick(); this.say('🧊 얼음이 녹았어요! 5초 뒤에 다시 할 수 있어요'); }
     if (!this.frozen) this.bodyYaw = this.yaw;
@@ -612,7 +751,7 @@ export class Game {
     if (this.isSpec()) this.pickSpec();
     // 막판 30초
     const left = this.timeLeft();
-    if (this.ph === 'hunt' && !this.practice && !this.ended) { if (left <= 30 && !this.hurry) { this.hurry = true; bgm('hurry'); this.banner('30초 남았다!', '', 1.6); } if (left <= 10 && Math.ceil(left) !== this.lastTick) { this.lastTick = Math.ceil(left); S.tick(); } }
+    if (this.ph === 'hunt' && (!this.practice || this.pracRole === 'mom') && !this.ended) { if (left <= 30 && !this.hurry) { this.hurry = true; bgm('hurry'); this.banner('30초 남았다!', '', 1.6); } if (left <= 10 && Math.ceil(left) !== this.lastTick) { this.lastTick = Math.ceil(left); S.tick(); } }
     this.syncTouch();
   }
   timeLeft() { return Math.max(0, this.tLeft - (performance.now() - this.tAt) / 1000); }
@@ -755,7 +894,7 @@ export class Game {
 <div data-chat style="position:absolute;left:12px;bottom:${isPhone ? 230 : 140}px;display:flex;flex-direction:column;gap:3px;max-width:50vw;font-size:15px"></div>`);
     const q = s => ui.querySelector(`[data-${s}]`);
     this.hTop = q('top'); this.hRole = q('role'); this.hCnt = q('cnt'); this.hSay = q('say'); this.hPrompt = q('prompt'); this.hFeed = q('feed'); this.hBan = q('ban'); this.hCard = q('card'); this.chatBox = q('chat');
-    if (this.practice) this.hCnt.style.display = 'none';
+    if (this.practice && this.pracRole !== 'mom') this.hCnt.style.display = 'none';
     if (isPhone) this.hCard.onclick = () => { this.cardOn = false; this.drawCard(); };
   }
   say(t) { this.hSay.textContent = t; this.hSay.style.display = 'block'; clearTimeout(this.sayT); this.sayT = setTimeout(() => this.hSay.style.display = 'none', 2200); }
@@ -924,8 +1063,8 @@ export class Game {
     const left = this.timeLeft(), mm = Math.floor(left / 60), ss = Math.floor(left % 60);
     const me = this.myP();
     let top = '';
-    if (!this.practice) {
-      const lbl = this.ph === 'prep' ? '💄 엄마 단장 중' : '🧹 청소 중';
+    if (!this.practice || this.pracRole === 'mom') {
+      const lbl = this.practice ? `🧹 엄마 연습 · ${this.M.name}` : this.ph === 'prep' ? '💄 엄마 단장 중' : '🧹 청소 중';
       top = `<span style="background:${left <= 30 && this.ph === 'hunt' ? '#ff5a5a' : '#fffaf0'};color:${left <= 30 && this.ph === 'hunt' ? '#fff' : '#4a2c1d'};border:3px solid #4a2c1d;border-radius:14px;padding:4px 14px;font-size:24px">${lbl} ${mm}:${String(ss).padStart(2, '0')}</span>`;
     } else top = `<span style="background:#fffaf0;color:#4a2c1d;border:3px solid #4a2c1d;border-radius:14px;padding:4px 14px;font-size:18px">🧸 연습 · ${this.M.name} · ${this.pracMom ? '엄마 눈' : '장난감'}</span>`;
     if (this._top !== top) { this._top = top; this.hTop.innerHTML = top; }
@@ -935,9 +1074,9 @@ export class Game {
       role = `<div style="font-size:19px">🧹 엄마</div><div>${sp}</div><div style="font-size:14px">${this.restT > 0 ? '😵 쉬는 중…' : ''}🌀 청소기 ${this.vacCd > 0 ? this.vacCd + '초' : '<b style="color:#3fbf6a">준비됨</b> (Space)'}</div>`;
     } else if (me && me.caught) role = `<div style="font-size:19px">📦 잡혔어요</div><div style="font-size:14px">친구가 구해 주길 기다려요</div>`;
     else role = `<div style="font-size:19px">🧸 ${me && me.form ? formInfo(me.form).n + ' <span style="font-size:13px">(' + ({ s: '빠름', m: '보통', l: '느림', xl: '아주 느림' })[formInfo(me.form).s] + ')</span>' : '장난감 그대로'}</div>
-<div style="font-size:14px">${this.frozen ? '🧊 <b style="color:#3b8fd6">얼음 중</b>' + (this.modes.fzLimit ? ` ${Math.max(0, Math.ceil(20 - (performance.now() - this.frozenAt) / 1000))}초` : '') : (this.modes.fzLimit && performance.now() < (this.fzCd || 0) ? `🧊 ${Math.ceil((this.fzCd - performance.now()) / 1000)}초 뒤 얼음 가능` : '흔들흔들 (Shift = 얼음)')}</div>${this.practice ? '' : `<div style="font-size:14px">📢 삑!까지 ${this.ph === 'hunt' ? this.sqLeft + '초' : '-'}</div>`}`;
+<div style="font-size:14px">${this.frozen ? '🧊 <b style="color:#3b8fd6">얼음 중</b>' + (this.modes.fzLimit ? ` ${Math.max(0, Math.ceil(20 - (performance.now() - this.frozenAt) / 1000))}초` : '') : (this.modes.fzLimit && performance.now() < (this.fzCd || 0) ? `🧊 ${Math.ceil((this.fzCd - performance.now()) / 1000)}초 뒤 얼음 가능` : '흔들흔들 (Shift = 얼음)')}</div>${this.practice && this.pracMom ? '' : `<div style="font-size:14px">📢 삑!까지 ${this.ph === 'hunt' ? this.sqLeft + '초' : '-'}</div>`}`;
     if (this._role !== role) { this._role = role; this.hRole.innerHTML = role; }
-    if (!this.practice) {
+    if (!this.practice || this.pracRole === 'mom') {
       const toys = [...this.P.values()].filter(p => p.role === 'toy' && !p.gone), free = toys.filter(p => !p.caught);
       const cnt = `🧸 남은 장난감 <b>${free.length}</b> / ${toys.length}<div style="font-size:13px;margin-top:2px">${toys.map(p => `<span style="opacity:${p.caught ? .35 : 1}">${p.caught ? '📦' : '🧸'}${esc(p.name)}</span>`).join(' ')}</div>`;
       if (this._cnt !== cnt) { this._cnt = cnt; this.hCnt.innerHTML = cnt; }
@@ -993,7 +1132,14 @@ export class Game {
       d.innerHTML = `<span style="color:${col}">●</span> <b>${esc(t.name)}</b> — ${esc(sp.room)}에서 ${sp.f ? formInfo(sp.f).n + '(으)로' : '변신 없이'} ${t.caught ? '<span style="color:#ff5a5a">잡힘</span>' : '<span style="color:#3fbf6a">끝까지 생존!</span>'} · ${fmtT(t.surv)}${t.rescues ? ` · 구출 ${t.rescues}번` : ''}`;
       list.append(d);
     });
-    let cd = 14; const cdEl = el.querySelector('[data-cd]');
+    const cdEl = el.querySelector('[data-cd]');
+    if (this.practice) {
+      cdEl.innerHTML = '<div style="display:flex;gap:8px;justify-content:center"><button class="btn pk" data-r>🔁 다시 하기</button><button class="btn" data-q>나가기</button></div>';
+      cdEl.querySelector('[data-r]').onclick = () => this.onRetry ? this.onRetry() : this.onQuit();
+      cdEl.querySelector('[data-q]').onclick = () => this.onQuit();
+      return;
+    }
+    let cd = 14;
     const tick = () => { cdEl.textContent = `${cd}초 뒤 대기실로 돌아가요`; cd--; };
     tick(); this.cdT = setInterval(tick, 1000);
   }

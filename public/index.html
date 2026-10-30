@@ -195,6 +195,29 @@ label.sel{display:flex;flex-direction:column;font-size:13px;color:var(--dim);gap
   <div class="row"><button type="button" class="btn grow" data-close>취소</button><button class="btn pk grow">들어가기</button></div></form>
 </div></div>
 
+<!-- 혼자 연습 -->
+<div class="modal" id="mdPrac"><div class="card">
+  <h2>🧸 혼자 연습하기</h2>
+  <div class="opt"><span>맵</span><select id="pMap" class="grow"><option value="room">아이 방</option><option value="kitchen">부엌</option><option value="attic">다락방</option></select></div>
+  <div class="row" style="margin:8px 0">
+    <label class="sw grow btn sm" style="box-shadow:none"><input type="radio" name="pRole" value="toy"> 🧸 장난감 연습</label>
+    <label class="sw grow btn sm" style="box-shadow:none"><input type="radio" name="pRole" value="mom"> 🧹 엄마 연습</label>
+  </div>
+  <div id="pMomOpt" class="row" style="margin:6px 0">
+    <label class="sel grow">봇 장난감<select id="pBots"><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
+    <label class="sel grow">난이도<select id="pDiff"><option value="easy">쉬움 (흔들흔들, 가끔 이사)</option><option value="hard">어려움 (같은 물건 옆에서 얼음)</option></select></label>
+  </div>
+  <div id="pRoleHint" class="hint"></div>
+  <div style="margin-top:10px;font-size:16px">🎲 추가 모드</div>
+  <div class="modes">
+    <label class="sw"><input type="checkbox" id="pBlink"> 👀 눈 깜빡</label>
+    <label class="sw"><input type="checkbox" id="pBreath"> 😮‍💨 숨쉬기</label>
+    <label class="sw"><input type="checkbox" id="pSqFast"> 📢 삑! 자주</label>
+    <label class="sw"><input type="checkbox" id="pFzLimit"> 🧊 얼음 제한</label>
+  </div>
+  <div class="row" style="margin-top:14px"><button type="button" class="btn grow" data-close>취소</button><button type="button" class="btn pk grow" id="pGo">시작!</button></div>
+</div></div>
+
 <!-- 설정 -->
 <div class="modal" id="mdSet"><div class="card">
   <h2>설정</h2>
@@ -211,6 +234,6 @@ label.sel{display:flex;flex-direction:column;font-size:13px;color:var(--dim);gap
   <button class="btn pk" id="oDone" style="width:100%">닫기</button>
 </div></div>
 
-<script type="module" src="app.js?v=5"></script>
+<script type="module" src="app.js?v=6"></script>
 </body>
 </html>

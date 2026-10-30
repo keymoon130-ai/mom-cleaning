@@ -1,6 +1,6 @@
 // 엄마의 대청소날~ — 방 서버 (Cloudflare Workers + Durable Objects)
 // Room: 방 하나. Lobby: 공개방 목록 (하나뿐)
-import { CFG, OBJ, MAPS, MAP_IDS, genWorld, speedOf, lookValid, roomName, formReach, PROTO } from '../public/shared.js';
+import { CFG, OBJ, MAPS, MAP_IDS, genWorld, speedOf, lookValid, roomName, formReach, PROTO, BAL } from '../public/shared.js';
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type' };
@@ -9,12 +9,14 @@ const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const r2 = v => Math.round(v * 100) / 100;
 const clean = (s, n = 10) => String(s || '').replace(/[<>\n\r\t]/g, '').trim().slice(0, n);
 const lobbyStub = env => env.LOBBY.get(env.LOBBY.idFromName('main'));
+const statsStub = env => env.STATS.get(env.STATS.idFromName('main'));
 
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
     if (url.pathname === '/api/rooms') return lobbyStub(env).fetch('https://lobby/list');
+    if (url.pathname === '/api/stats') return statsStub(env).fetch('https://stats/list');
     if (url.pathname === '/api/create') {
       for (let i = 0; i < 10; i++) {
         let code = ''; for (let k = 0; k < 4; k++) code += CODE_CHARS[Math.random() * CODE_CHARS.length | 0];
@@ -47,6 +49,24 @@ export class Lobby {
     const list = [...this.rooms.values()].filter(r => r.phase === 'lobby' && r.n < r.max).map(({ at, phase, ...r }) => r);
     list.sort((a, b) => b.n - a.n);
     return json({ rooms: list.slice(0, 60) });
+  }
+}
+
+// ───────── 판 기록 (밸런스용) ─────────
+export class Stats {
+  constructor(state) {
+    this.sql = state.storage.sql;
+    this.sql.exec('CREATE TABLE IF NOT EXISTS games (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, data TEXT)');
+  }
+  async fetch(req) {
+    const url = new URL(req.url);
+    if (url.pathname === '/add') {
+      const d = await req.json();
+      this.sql.exec('INSERT INTO games (at, data) VALUES (?, ?)', Date.now(), JSON.stringify(d));
+      return json({ ok: true });
+    }
+    const rows = this.sql.exec('SELECT id, at, data FROM games ORDER BY id DESC LIMIT 5000').toArray();
+    return json({ games: rows.map(r => ({ id: r.id, at: r.at, ...JSON.parse(r.data) })) });
   }
 }
 
@@ -259,7 +279,8 @@ export class Room {
         id: p.id, name: p.name, role: mom ? 'mom' : 'toy', x, z, a: mom ? 0 : Math.PI, form: null, fz: 0, mv: 0,
         caught: false, caughtAt: 0, stam: CFG.STAMINA, rest: 0, regen: 0, vac: 0, formT: 0, grace: 0,
         sqT: 30 * (.5 + Math.random() * .5), lastT: Date.now(), res: 0, resT: 0,
-        stat: { catches: 0, miss: 0, survived: 0, rescues: 0, caughtN: 0, forms: 0 }, spot: null
+        stat: { catches: 0, miss: 0, survived: 0, rescues: 0, caughtN: 0, forms: 0, vacs: 0 }, spot: null,
+        sqAt: 0, vacAt: 0, fTime: {}, fCaught: {}, cause: { sq: 0, vac: 0, look: 0 }
       });
     }
     this.phase = 'game';
@@ -328,12 +349,12 @@ export class Room {
       }
       case 'vac': {
         if (gp.role !== 'mom' || g.ph !== 'hunt' || gp.rest > 0 || now < gp.vac) return;
-        gp.vac = now + CFG.VAC_CD * 1000;
+        gp.vac = now + CFG.VAC_CD * 1000; gp.stat.vacs++;
         const hit = [];
         for (const t of g.P.values()) {
           if (t.role !== 'toy' || t.caught) continue;
           const d = Math.hypot(t.x - gp.x, t.z - gp.z);
-          if (d < CFG.VAC_R) { hit.push(t.id); t.sqT = g.sq; const pl = this.players.get(t.id); if (pl) this.send(pl, { type: 'pull', x: r2(gp.x), z: r2(gp.z), k: r2(Math.min(.9, d - .6)) }); }
+          if (d < CFG.VAC_R) { hit.push(t.id); t.sqT = g.sq; t.vacAt = now; const pl = this.players.get(t.id); if (pl) this.send(pl, { type: 'pull', x: r2(gp.x), z: r2(gp.z), k: r2(Math.min(.9, d - .6)) }); }
         }
         this.all({ type: 'ev', e: 'vac', id: gp.id, x: r2(gp.x), z: r2(gp.z), hit });
         for (const id of hit) { const t = g.P.get(id); this.all({ type: 'ev', e: 'sq', id, x: r2(t.x), z: r2(t.z), v: 1 }); }
@@ -364,7 +385,10 @@ export class Room {
 
   catchToy(mom, t) {
     const g = this.g, M = g.W.M;
-    t.caught = true; t.caughtAt = Date.now(); t.stat.caughtN++;
+    const now = Date.now();
+    const cause = now - t.vacAt < 5000 ? 'vac' : now - t.sqAt < 5000 ? 'sq' : 'look';
+    t.cause[cause]++; const fk = t.form || '-'; t.fCaught[fk] = (t.fCaught[fk] || 0) + 1;
+    t.caught = true; t.caughtAt = now; t.stat.caughtN++;
     t.spot = t.spot || { x: r2(t.x), z: r2(t.z), f: t.form, room: roomName(M, t.x, t.z) };
     t.lastSpot = { x: r2(t.x), z: r2(t.z), f: t.form, room: roomName(M, t.x, t.z) };
     t.form = null; t.x = M.box[0]; t.z = M.box[1];
@@ -427,8 +451,9 @@ export class Room {
           else if (q.stam < CFG.STAMINA) { q.regen += dt; if (q.regen >= CFG.STAM_REGEN) { q.regen = 0; q.stam++; } }
         } else if (!q.caught) {
           q.stat.survived += dt;
+          const fk = q.form || '-'; q.fTime[fk] = (q.fTime[fk] || 0) + dt;
           q.sqT -= dt;
-          if (q.sqT <= 0) { q.sqT = g.sq; this.all({ type: 'ev', e: 'sq', id: q.id, x: r2(q.x), z: r2(q.z) }); }
+          if (q.sqT <= 0) { q.sqT = g.sq; q.sqAt = now; this.all({ type: 'ev', e: 'sq', id: q.id, x: r2(q.x), z: r2(q.z) }); }
         }
       }
       if (g.t <= 0) { this.endGame('toy'); return; }
@@ -455,6 +480,36 @@ export class Room {
     if (toys.every(q => q.caught)) this.endGame('mom');
   }
 
+  // 판 결과를 기록 (이름은 저장하지 않음)
+  record(win, why) {
+    try {
+      const g = this.g;
+      if (g.ph !== 'hunt') return; // 준비 중에 끝난 판은 기록 안 함
+      const toys = [...g.P.values()].filter(q => q.role === 'toy');
+      const moms = [...g.P.values()].filter(q => q.role === 'mom');
+      const sum = (arr, f) => arr.reduce((a, q) => a + f(q), 0);
+      const forms = {};
+      for (const t of toys) {
+        for (const [k, v] of Object.entries(t.fTime)) { (forms[k] = forms[k] || [0, 0])[0] += v; }
+        for (const [k, v] of Object.entries(t.fCaught)) { (forms[k] = forms[k] || [0, 0])[1] += v; }
+      }
+      for (const k in forms) forms[k][0] = Math.round(forms[k][0]);
+      const d = {
+        bal: BAL, pv: PROTO, map: g.mapId, moms: moms.length, toys: toys.length,
+        modes: Object.keys(g.modes).filter(k => g.modes[k]),
+        win, why: why || '', ph: g.ph,
+        left: g.ph === 'hunt' ? Math.max(0, Math.round(g.t)) : CFG.HUNT,
+        alive: toys.filter(t => !t.caught && !t.gone).length,
+        surv: toys.map(t => Math.round(t.stat.survived)),
+        catches: sum(toys, t => t.stat.caughtN), rescues: sum(toys, t => t.stat.rescues),
+        miss: sum(moms, m => m.stat.miss), vacs: sum(moms, m => m.stat.vacs || 0),
+        cause: { sq: sum(toys, t => t.cause.sq), vac: sum(toys, t => t.cause.vac), look: sum(toys, t => t.cause.look) },
+        forms
+      };
+      statsStub(this.env).fetch('https://stats/add', { method: 'POST', body: JSON.stringify(d) }).catch(() => {});
+    } catch (e) { console.log('record', e && e.stack); }
+  }
+
   endGame(win, why) {
     const g = this.g; if (!g || g.ended) return;
     g.ended = true; clearInterval(this.loop); this.loop = null;
@@ -468,6 +523,7 @@ export class Room {
       moms: moms.map(m => ({ id: m.id, name: m.name, catches: m.stat.catches, miss: m.stat.miss, look: (this.players.get(m.id) || {}).look || null }))
     };
     this.all(res);
+    this.record(win, why);
     clearTimeout(this.backT);
     this.backT = setTimeout(() => {
       this.phase = 'lobby'; this.g = null;

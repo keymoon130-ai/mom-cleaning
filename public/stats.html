@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>밸런스 통계</title>
+<link href="fonts/jua.css" rel="stylesheet">
+<style>
+:root{--bg:#fff3c4;--ink:#4a2c1d;--pink:#ff6fa5;--mint:#5fd0b5;--sky:#7cc4ff;--yel:#ffd34d;--card:#fffaf0;--dim:#9a7b66;--red:#ff5a5a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:'Jua',system-ui,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:18px 16px 60px}
+h1{color:var(--pink);margin:6px 0 4px;font-size:32px}
+h2{margin:26px 0 8px;font-size:21px}
+.note{color:var(--dim);font-size:14px;margin:4px 0}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:var(--card);border:3px solid var(--ink);border-radius:14px;padding:10px 12px;margin:12px 0}
+select,input{font:inherit}
+select{border:2px solid var(--ink);border-radius:10px;padding:4px 8px;background:#fff}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{background:var(--card);border:3px solid var(--ink);border-radius:14px;padding:10px 12px}
+.kpi b{display:block;font-size:28px}
+.kpi span{color:var(--dim);font-size:14px}
+.tw{overflow-x:auto;background:var(--card);border:3px solid var(--ink);border-radius:14px}
+table{border-collapse:collapse;width:100%;font-size:15px}
+th,td{padding:7px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid rgba(74,44,29,.15)}
+th{background:rgba(255,111,165,.15);position:sticky;top:0}
+th:first-child,td:first-child{text-align:left}
+tr:last-child td{border-bottom:0}
+.wr{display:inline-flex;align-items:center;gap:6px}
+.wr i{display:inline-block;width:70px;height:10px;border-radius:5px;background:var(--sky);overflow:hidden;position:relative}
+.wr i::after{content:'';position:absolute;inset:0 auto 0 0;width:var(--w);background:var(--pink)}
+.ok{color:#1e9a7c}.hi{color:var(--red)}.lo{color:#2a7fd0}.few{color:var(--dim)}
+.legend{font-size:14px;color:var(--dim)}
+.legend b.p{color:var(--pink)}.legend b.s{color:#2a7fd0}
+#empty{display:none;text-align:center;padding:40px 10px;font-size:20px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🧹 밸런스 통계</h1>
+  <p class="note">실제 멀티 판만 기록돼요 (연습 모드 제외, 닉네임은 저장 안 함). 목표: 엄마 승률 <b>45~55%</b>.</p>
+  <div class="bar">
+    <label>밸런스 버전 <select id="fBal"></select></label>
+    <label>엄마 수 <select id="fMoms"><option value="">전체</option><option>1</option><option>2</option></select></label>
+    <label><input type="checkbox" id="fBad"> 중간에 나가서 끝난 판도 포함</label>
+  </div>
+  <div id="empty">아직 기록된 판이 없어요. 친구들이랑 몇 판 하고 와 주세요!</div>
+  <div id="out"></div>
+</div>
+<script type="module">
+import { OBJ, DECOR, MAPS, BAL } from './shared.js?v=8';
+
+const MODE = { blink: '눈 깜빡', breath: '숨쉬기', sqFast: '삑! 자주', fzLimit: '얼음 제한' };
+const CAUSE = { sq: '삑! 직후 (5초 안)', vac: '청소기 직후 (5초 안)', look: '그냥 찾아냄' };
+const fname = k => k === '-' ? '변신 안 함 (장난감 모습)' : (OBJ[k] || DECOR[k] || { n: k }).n;
+const fsize = k => k === '-' ? '-' : OBJ[k] ? ({ s: '작음', m: '보통', l: '큼' }[OBJ[k].s] || OBJ[k].s) : DECOR[k] ? '가구' : '?';
+const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
+const mmss = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+const $ = id => document.getElementById(id);
+
+let ALL = [];
+
+function wrCell(mw, n) {
+  const p = pct(mw, n);
+  const cls = n < 5 ? 'few' : p > 60 ? 'hi' : p < 40 ? 'lo' : 'ok';
+  return `<span class="wr ${cls}"><i style="--w:${p}%"></i>${p}%</span>`;
+}
+
+function groupTable(title, games, keyFn, labelFn, note) {
+  const m = new Map();
+  for (const g of games) for (const k of [].concat(keyFn(g))) {
+    const r = m.get(k) || { n: 0, mw: 0, left: 0, alive: 0 };
+    r.n++; if (g.win === 'mom') { r.mw++; r.left += g.left; } else r.alive += g.alive;
+    m.set(k, r);
+  }
+  if (!m.size) return '';
+  const rows = [...m.entries()].sort((a, b) => b[1].n - a[1].n).map(([k, r]) => `<tr>
+    <td>${labelFn(k)}</td><td>${r.n}</td><td>${wrCell(r.mw, r.n)}</td>
+    <td>${r.mw ? mmss(r.left / r.mw) : '-'}</td><td>${r.n - r.mw ? (r.alive / (r.n - r.mw)).toFixed(1) : '-'}</td></tr>`).join('');
+  return `<h2>${title}</h2>${note ? `<p class="note">${note}</p>` : ''}<div class="tw"><table>
+    <tr><th></th><th>판</th><th>엄마 승률</th><th>엄마 이겼을 때 남은 시간</th><th>장난감 이겼을 때 살아남은 수</th></tr>${rows}</table></div>`;
+}
+
+function render() {
+  const bal = $('fBal').value, moms = $('fMoms').value, bad = $('fBad').checked;
+  const G = ALL.filter(g => (bal === '' || g.bal === +bal) && (moms === '' || g.moms === +moms) && (bad || !g.why));
+  $('empty').style.display = G.length ? 'none' : 'block';
+  if (!G.length) { $('out').innerHTML = ''; return; }
+
+  const n = G.length, mw = G.filter(g => g.win === 'mom').length;
+  const avg = f => G.reduce((a, g) => a + f(g), 0) / n;
+  const allSurv = G.flatMap(g => g.surv || []);
+  let h = `<div class="kpis">
+    <div class="kpi"><b>${n}</b><span>판 수</span></div>
+    <div class="kpi"><b>${wrCell(mw, n)}</b><span>엄마 승률</span></div>
+    <div class="kpi"><b>${allSurv.length ? mmss(allSurv.reduce((a, b) => a + b, 0) / allSurv.length) : '-'}</b><span>장난감 평균 버틴 시간</span></div>
+    <div class="kpi"><b>${avg(g => g.miss).toFixed(1)}</b><span>판당 헛손질 (엄마 전체)</span></div>
+    <div class="kpi"><b>${avg(g => g.vacs).toFixed(1)}</b><span>판당 청소기</span></div>
+    <div class="kpi"><b>${avg(g => g.rescues).toFixed(1)}</b><span>판당 상자 구출</span></div>
+  </div>
+  <p class="legend">승률 색: <span class="ok">40~60% 적당</span> · <span class="hi">60% 넘음 = 엄마 유리</span> · <span class="lo">40% 아래 = 장난감 유리</span> · <span class="few">5판 미만은 회색 (아직 판단 일러요)</span></p>`;
+
+  h += groupTable('맵별', G, g => g.map, k => (MAPS[k] || { name: k }).name);
+  h += groupTable('인원별', G, g => `${g.moms}:${g.toys}`, k => { const [a, b] = k.split(':'); return `엄마 ${a} vs 장난감 ${b}`; });
+  h += groupTable('추가 모드별', G, g => g.modes && g.modes.length ? g.modes : ['none'], k => k === 'none' ? '모드 없음' : MODE[k] || k, '한 판에 모드를 여러 개 켜면 각 모드 줄에 모두 들어가요.');
+
+  // 물건별
+  const F = new Map();
+  for (const g of G) for (const [k, [sec, c]] of Object.entries(g.forms || {})) {
+    const r = F.get(k) || { sec: 0, c: 0, games: 0 }; r.sec += sec; r.c += c; r.games++; F.set(k, r);
+  }
+  if (F.size) {
+    const rows = [...F.entries()].map(([k, r]) => ({ k, ...r, rate: r.sec > 0 ? r.c / (r.sec / 60) : 0 }))
+      .sort((a, b) => (a.sec < 120) - (b.sec < 120) || a.rate - b.rate)
+      .map(r => `<tr class="${r.sec < 120 ? 'few' : ''}"><td>${fname(r.k)}</td><td>${fsize(r.k)}</td><td>${r.games}</td><td>${mmss(r.sec)}</td><td>${r.c}</td><td>${r.rate.toFixed(2)}</td></tr>`).join('');
+    h += `<h2>물건별 (잘 안 잡히는 순)</h2>
+      <p class="note">"분당 잡힘" = 그 물건으로 1분 숨어 있을 때 잡히는 횟수. 낮을수록 숨기 좋은 물건이에요. 숨은 시간 2분 미만은 회색(표본 적음).</p>
+      <div class="tw"><table><tr><th>물건</th><th>크기</th><th>쓴 판</th><th>숨은 시간 합</th><th>잡힘</th><th>분당 잡힘</th></tr>${rows}</table></div>`;
+  }
+
+  // 잡힌 계기
+  const C = { sq: 0, vac: 0, look: 0 };
+  for (const g of G) for (const k in C) C[k] += (g.cause || {})[k] || 0;
+  const ct = C.sq + C.vac + C.look;
+  if (ct) {
+    h += `<h2>잡힌 계기</h2><div class="tw"><table><tr><th></th><th>횟수</th><th>비율</th></tr>${
+      Object.keys(C).map(k => `<tr><td>${CAUSE[k]}</td><td>${C[k]}</td><td>${pct(C[k], ct)}%</td></tr>`).join('')}</table></div>`;
+  }
+
+  // 최근 판
+  h += `<h2>최근 판</h2><div class="tw"><table><tr><th>시간</th><th>맵</th><th>인원</th><th>모드</th><th>승리</th><th>남은 시간</th><th>버전</th></tr>${
+    G.slice(0, 30).map(g => `<tr><td>${new Date(g.at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+      <td>${(MAPS[g.map] || { name: g.map }).name}</td><td>${g.moms} vs ${g.toys}</td>
+      <td>${(g.modes || []).map(k => MODE[k] || k).join(', ') || '-'}</td>
+      <td>${g.win === 'mom' ? '🧹 엄마' : '🧸 장난감'}${g.why ? ` <span class="few">(${g.why})</span>` : ''}</td>
+      <td>${mmss(g.left)}</td><td>${g.bal}</td></tr>`).join('')}</table></div>`;
+
+  $('out').innerHTML = h;
+}
+
+const res = await fetch('/api/stats').then(r => r.json()).catch(() => ({ games: [] }));
+ALL = res.games || [];
+const bals = [...new Set(ALL.map(g => g.bal))].sort((a, b) => b - a);
+if (!bals.includes(BAL)) bals.unshift(BAL);
+$('fBal').innerHTML = `<option value="">전체</option>` + bals.map(b => `<option value="${b}">${b}${b === BAL ? ' (지금)' : ''}</option>`).join('');
+$('fBal').value = String(BAL);
+for (const id of ['fBal', 'fMoms', 'fBad']) $(id).addEventListener('change', render);
+render();
+</script>
+</body>
+</html>

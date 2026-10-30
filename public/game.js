@@ -1,9 +1,9 @@
 // 엄마의 대청소날~ — 게임 화면 (레이캐스터 · 조작 · HUD)
-import { CFG, OBJ, DECOR, MAPS, MAP_IDS, genWorld, collide, solid, speedOf, roomName, WALL_H, formInfo, formReach, formRadius } from './shared.js?v=4';
-import { THREE, buildObj, buildDecor, buildForm, buildRobot, buildToyBox, mergeStatic, objHeight, ROBOT_H } from './models.js?v=4';
-import { toyColor } from './sprites.js?v=4';
-import { S, bgm, audioInit } from './sfx.js?v=4';
-import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=4';
+import { CFG, OBJ, DECOR, MAPS, MAP_IDS, genWorld, collide, solid, speedOf, roomName, WALL_H, formInfo, formReach, formRadius } from './shared.js?v=5';
+import { THREE, buildObj, buildDecor, buildForm, buildRobot, buildToyBox, mergeStatic, objHeight, ROBOT_H } from './models.js?v=5';
+import { toyColor } from './sprites.js?v=5';
+import { S, bgm, audioInit } from './sfx.js?v=5';
+import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=5';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -152,12 +152,18 @@ export class Game {
       m.castShadow = true; piv.add(m); piv.userData.plane = m; piv.userData.tex = tx;
     } else piv.add(key === 'robot' ? buildRobot(new THREE.Color(p.col).getHex(), !this.ST.low) : buildForm(key, !this.ST.low));
     piv.userData.k = 'p'; piv.userData.id = p.id;
+    if (key !== 'mom') { // 눈 위치용 크기
+      const bb = new THREE.Box3().setFromObject(piv), sz = new THREE.Vector3(); bb.getSize(sz);
+      piv.userData.rad = Math.max(sz.x, sz.z) / 2 * .95 + .01; piv.userData.eyeY = Math.min(sz.y * .62, sz.y - .03);
+      piv.userData.eyeS = Math.min(1.6, Math.max(.45, sz.y * 1.4));
+    }
     this.world.add(piv); p.obj = piv; p.objKey = key;
     return piv;
   }
 
   init(st) {
     this.me = st.you; this.setWorld(st.map, st.seed);
+    this.modes = st.modes || {}; this.sqPeriod = st.sq || CFG.SQUEAK;
     this.ph = st.ph; this.tLeft = st.t; this.tAt = performance.now();
     this.P = new Map(); let i = 0;
     for (const id of Object.keys(st.roles)) {
@@ -179,7 +185,7 @@ export class Game {
     this.me = 'me'; this.setWorld(MAP_IDS[0], Math.random() * 1e9 | 0);
     this.P = new Map([['me', { id: 'me', name: '나', role: 'toy', x: this.M.toy[0], z: this.M.toy[1], a: 0, form: null, fl: 0, buf: [], col: toyColor(0), look: null }]]);
     this.role = 'toy'; this.ph = 'hunt'; this.tLeft = 0; this.tAt = performance.now(); this.yaw = Math.PI; this.pitch = -.35; this.bodyYaw = this.yaw;
-    this.frozen = false; this.stam = CFG.STAMINA; this.vacCd = 0; this.restT = 0; this.sqLeft = 99;
+    this.frozen = false; this.stam = CFG.STAMINA; this.vacCd = 0; this.restT = 0; this.sqLeft = 99; this.modes = {}; this.sqPeriod = CFG.SQUEAK;
     this.pracMom = false; this.pracBody = null;
     this.banner('🧸 혼자 연습하기', isPhone ? '변신해 보고, 👀 엄마 눈으로 어떻게 보이는지 확인해요' : 'E 변신 · Q 원래대로 · Shift 얼음 · R 엄마 눈으로 보기 · M 맵 바꾸기', 6);
     bgm('game');
@@ -386,7 +392,14 @@ export class Game {
     if (this.practice) this.myP().form = null; else this.net.send({ type: 'form', o: -1 });
     S.poof();
   }
-  toggleFreeze() { if (this.role !== 'toy' || this.isSpec()) return; this.frozen = !this.frozen; S.tick(); this.say(this.frozen ? '🧊 얼음! (안 흔들려요, 둘러보기만 돼요)' : '땡! 움직일 수 있어요'); }
+  toggleFreeze() {
+    if (this.role !== 'toy' || this.isSpec()) return;
+    const now = performance.now();
+    if (!this.frozen && now < (this.fzCd || 0)) { this.say(`🧊 ${Math.ceil((this.fzCd - now) / 1000)}초 뒤에 다시 얼음할 수 있어요`); return; }
+    this.frozen = !this.frozen; this.frozenAt = now; S.tick();
+    if (!this.frozen && this.modes.fzLimit) this.fzCd = now + 5000;
+    this.say(this.frozen ? (this.modes.fzLimit ? '🧊 얼음! (최대 20초)' : '🧊 얼음! (안 흔들려요, 둘러보기만 돼요)') : '땡! 움직일 수 있어요');
+  }
   sign() {
     if (this.role !== 'toy' || this.practice) return;
     const now = performance.now(); if (now < (this.signCd || 0)) return; this.signCd = now + 2500;
@@ -410,6 +423,11 @@ export class Game {
     if (this.restT > 0) { this.say('헉헉… 쉬는 중'); return; }
     const pk = this.pick; this.hand = 1; S.grab();
     if (!pk || pk.k === 'b' || pk.d > CFG.GRAB_RANGE) { if (pk && (pk.k === 'o' || pk.k === 'p' || pk.k === 'd')) this.say('손이 안 닿아요. 더 가까이!'); return; }
+    if (pk.k === 'o') { // 진짜 물건 바닥 범위 안에 장난감이 겹쳐 있으면 그 장난감
+      const o = this.Wd.objs[pk.i];
+      const hid = [...this.P.values()].find(p => p.role === 'toy' && !p.caught && !p.gone && p.id !== this.me && Math.hypot(p.x - o.x, p.z - o.z) < o.r + .15);
+      if (hid) { this.net.send({ type: 'grab', k: 'p', id: hid.id }); return; }
+    }
     if (pk.k === 'p') this.net.send({ type: 'grab', k: 'p', id: pk.id });
     else if (pk.k === 'o') this.net.send({ type: 'grab', k: 'o', i: pk.i });
     else if (pk.k === 'd') this.net.send({ type: 'grab', k: 'd', i: pk.i });
@@ -454,7 +472,7 @@ export class Game {
       case 'pull': { // 청소기에 빨려 간다
         const me = this.myP(); if (!me) break;
         const dx = m.x - me.x, dz = m.z - me.z, d = Math.hypot(dx, dz) || 1;
-        const [x, z] = collide(this.Wd, me.x, me.z, me.x + dx / d * m.k, me.z + dz / d * m.k); me.x = x; me.z = z;
+        const [x, z] = collide(this.Wd, me.x, me.z, me.x + dx / d * m.k, me.z + dz / d * m.k, undefined, false, true); me.x = x; me.z = z;
         this.doShake(.6); this.say('으아아 빨려 간다!!');
         break;
       }
@@ -501,7 +519,7 @@ export class Game {
       case 'resp': this.resP = m.v; this.resShow = 1; this.resWho = nm; break;
       case 'sq': {
         if (p) { this.bubbles.push({ id: m.id, x: m.x, z: m.z, t: 0, v: m.v }); this.posSoundAt(m.x, m.z, 'squeak'); }
-        if (m.id === this.me) this.say(m.v ? '청소기 때문에 삑!' : '삑! (30초마다 저절로 나요)');
+        if (m.id === this.me) this.say(m.v ? '청소기 때문에 삑!' : `삑! (${this.sqPeriod}초마다 저절로 나요)`);
         break;
       }
       case 'vac': {
@@ -553,6 +571,8 @@ export class Game {
   }
   update(dt, t) {
     this.dt = dt;
+    // 얼음 제한 모드: 20초 지나면 저절로 땡
+    if (this.frozen && this.modes.fzLimit && t - this.frozenAt > 20000) { this.frozen = false; this.fzCd = t + 5000; S.tick(); this.say('🧊 얼음이 녹았어요! 5초 뒤에 다시 할 수 있어요'); }
     if (!this.frozen) this.bodyYaw = this.yaw;
     const me = this.myP(); if (!me) return;
     // 내 이동
@@ -570,7 +590,7 @@ export class Game {
         const sp = speedOf(this.role, me.form) * dt, c = Math.cos(this.yaw), sn = Math.sin(this.yaw);
         const nx = me.x + (c * f - sn * s) * sp, nz = me.z + (sn * f + c * s) * sp;
         const small = this.role === 'toy' && me.form && formInfo(me.form).s === 's';
-        const [x, z] = collide(this.Wd, me.x, me.z, nx, nz, this.role === 'toy' && me.form ? formRadius(me.form) : undefined, small); me.x = x; me.z = z; this.moving = true;
+        const [x, z] = collide(this.Wd, me.x, me.z, nx, nz, this.role === 'toy' && me.form ? formRadius(me.form) : undefined, small, this.role === 'toy'); me.x = x; me.z = z; this.moving = true;
         if (this.role === 'mom') { me.stepT = (me.stepT || 0) - dt; if (me.stepT <= 0) { me.stepT = .36; S.slipper(.35, 0); } }
       }
     }
@@ -609,6 +629,17 @@ export class Game {
     const pool = free.length ? free : [...this.P.values()].filter(p => p.role === 'mom');
     if (!pool.length) return; const i = pool.findIndex(p => p.id === this.spec);
     this.spec = pool[(i + d + pool.length) % pool.length].id;
+  }
+
+  phaseOf(id) { let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) | 0; return (Math.abs(h) % 1000) / 1000 * 6.28; }
+  // 눈 깜빡 모드용 눈 (흰자 + 눈동자, 크기 1 기준)
+  eyesOf(p) {
+    if (!this.modes.blink || p.role !== 'toy') return null;
+    if (p.eyes && p.eyes.parent === this.world) return p.eyes;
+    const g = new THREE.Group(), W = new THREE.MeshBasicMaterial({ color: 0xffffff }), K = new THREE.MeshBasicMaterial({ color: 0x1a1210 });
+    const sg = this.eyeGeo || (this.eyeGeo = new THREE.SphereGeometry(.5, 10, 8));
+    for (const sx of [-1, 1]) { const w = new THREE.Mesh(sg, W); w.scale.set(.04, .048, .015); w.position.set(sx * .035, 0, 0); const k = new THREE.Mesh(sg, K); k.scale.set(.02, .026, .01); k.position.set(sx * .035, -.004, .008); g.add(w, k); }
+    g.visible = false; this.world.add(g); p.eyes = g; return g;
   }
 
   // 카메라: 엄마 = 1인칭, 장난감 = 몸 주위를 도는 3인칭
@@ -650,7 +681,7 @@ export class Game {
       if (vis && (p.fl & 8) && Math.sin(tt * 20) < 0) vis = false;
       // 벽 때문에 카메라가 내 몸(큰 가구) 안으로 들어오면 내 몸은 안 그린다
       if (vis && self && this.role === 'toy' && !this.isSpec() && this.camDist < formReach(p.form) + .28) vis = false;
-      o.visible = vis; if (!vis) continue;
+      o.visible = vis; if (!vis) { if (p.eyes) p.eyes.visible = false; continue; }
       const fz = self ? this.frozen : !!(p.fl & 1), mv = self ? this.moving : !!(p.fl & 2);
       if (p.role === 'mom') {
         o.position.set(p.x, mv ? Math.abs(Math.sin(tt * 9)) * .04 : 0, p.z);
@@ -660,6 +691,16 @@ export class Game {
         const a = self ? this.bodyYaw : p.a;
         o.position.set(p.x, mv ? Math.abs(Math.sin(tt * 12)) * .06 : 0, p.z);
         o.rotation.set(0, Math.PI / 2 - a, fz ? 0 : Math.sin(tt * 5 + p.x * 3) * .07);
+        const ph = this.phaseOf(p.id);
+        // 숨쉬기 모드: 얼음이어도 1.3%씩 커졌다 작아졌다
+        const br = this.modes.breath && p.form ? 1 + .013 * Math.sin(tt * 2.2 + ph) : 1; o.scale.set(br, br, br);
+        // 눈 깜빡 모드: 20초에 한 번, 0.1초 동안 눈을 뜬다 (나를 보는 쪽에)
+        const ey = this.eyesOf(p);
+        if (ey) {
+          const on = this.modes.blink && p.form && ((tt + ph * 3.18) % 20) < .1;
+          ey.visible = !!on;
+          if (on) { const ang = Math.atan2(cx - p.x, cz - p.z), ud = o.userData; ey.position.set(p.x + Math.sin(ang) * ud.rad, ud.eyeY + o.position.y, p.z + Math.cos(ang) * ud.rad); ey.rotation.set(0, ang, 0); ey.scale.setScalar(ud.eyeS); }
+        }
       }
     }
     this.R.render(this.scene, this.cam);
@@ -734,12 +775,15 @@ export class Game {
   drawCard() {
     const c = this.hCard; c.style.display = this.cardOn ? 'block' : 'none'; if (!this.cardOn) return;
     const mom = this.role === 'mom';
-    c.innerHTML = mom
+    const ML = { blink: '👀 눈 깜빡 (20초마다 0.1초 눈을 떠요)', breath: '😮‍💨 숨쉬기 (얼음이어도 살짝 움직여요)', sqFast: '📢 삑! 자주 (20초마다)', fzLimit: '🧊 얼음 제한 (최대 20초, 쿨 5초)' };
+    const on = Object.keys(ML).filter(k => this.modes && this.modes[k]);
+    const extra = on.length ? `<div style="margin-top:8px;padding-top:6px;border-top:2px dashed #e0c9a8"><b>🎲 이번 판 추가 모드</b>${on.map(k => `<div>· ${ML[k]}</div>`).join('')}</div>` : '';
+    c.innerHTML = (mom
       ? `<div style="font-size:26px">🧹 너는 <b style="color:#ff6fa5">엄마</b></div>
 <div>· 수상한 물건을 <b>클릭</b>해서 치워요 (가까이 가야 손이 닿아요)</div>
 <div>· 진짜 물건을 짚으면 <b>헛손질</b> → 스펀지가 줄어요. 다 떨어지면 3초 쉬어요</div>
 <div>· <b>Space 청소기</b>: 1분에 한 번, 주변 장난감이 삑! 하고 끌려와요</div>
-<div>· 장난감은 <b>30초마다 삑!</b> 소리를 내요. 귀를 기울여요</div>
+<div>· 장난감은 <b>${this.sqPeriod}초마다 삑!</b> 소리를 내요. 귀를 기울여요</div>
 <div>· 흔들흔들하는 물건은 수상해요</div>
 <div>· 잡힌 장난감은 <b>장난감 상자</b>로 가요. 상자를 지키면 좋아요</div>
 <div style="margin-top:6px">🏆 4분 안에 장난감을 <b>전부</b> 치우면 엄마 승리!</div>`
@@ -747,10 +791,10 @@ export class Game {
 <div>· <b>E</b>: 보고 있는 물건으로 변신 · <b>Q</b>: 원래 모습</div>
 <div>· 작은 물건은 빠르고, 큰 물건은 느려요</div>
 <div>· <b>Shift 얼음</b>: 흔들거림이 멈춰요 (못 움직여요)</div>
-<div>· 30초마다 저절로 <b>삑!</b> 소리가 나요</div>
+<div>· ${this.sqPeriod}초마다 저절로 <b>삑!</b> 소리가 나요</div>
 <div>· 잡힌 친구는 <b>장난감 상자</b> 앞에서 <b>E를 3초 꾹</b> 누르면 전부 구출!</div>
 <div>· <b>G</b>: 여기 봐! 손짓 (장난감끼리만 보여요) · <b>Enter</b>: 장난감끼리 채팅</div>
-<div style="margin-top:6px">🏆 4분 동안 한 명이라도 안 잡히면 장난감 승리!</div>`;
+<div style="margin-top:6px">🏆 4분 동안 한 명이라도 안 잡히면 장난감 승리!</div>`) + extra;
   }
   openChat() {
     if (this.chatOpen) return; this.chatOpen = true; this.keys = {};
@@ -891,7 +935,7 @@ export class Game {
       role = `<div style="font-size:19px">🧹 엄마</div><div>${sp}</div><div style="font-size:14px">${this.restT > 0 ? '😵 쉬는 중…' : ''}🌀 청소기 ${this.vacCd > 0 ? this.vacCd + '초' : '<b style="color:#3fbf6a">준비됨</b> (Space)'}</div>`;
     } else if (me && me.caught) role = `<div style="font-size:19px">📦 잡혔어요</div><div style="font-size:14px">친구가 구해 주길 기다려요</div>`;
     else role = `<div style="font-size:19px">🧸 ${me && me.form ? formInfo(me.form).n + ' <span style="font-size:13px">(' + ({ s: '빠름', m: '보통', l: '느림', xl: '아주 느림' })[formInfo(me.form).s] + ')</span>' : '장난감 그대로'}</div>
-<div style="font-size:14px">${this.frozen ? '🧊 <b style="color:#3b8fd6">얼음 중</b>' : '흔들흔들 (Shift = 얼음)'}</div>${this.practice ? '' : `<div style="font-size:14px">📢 삑!까지 ${this.ph === 'hunt' ? this.sqLeft + '초' : '-'}</div>`}`;
+<div style="font-size:14px">${this.frozen ? '🧊 <b style="color:#3b8fd6">얼음 중</b>' + (this.modes.fzLimit ? ` ${Math.max(0, Math.ceil(20 - (performance.now() - this.frozenAt) / 1000))}초` : '') : (this.modes.fzLimit && performance.now() < (this.fzCd || 0) ? `🧊 ${Math.ceil((this.fzCd - performance.now()) / 1000)}초 뒤 얼음 가능` : '흔들흔들 (Shift = 얼음)')}</div>${this.practice ? '' : `<div style="font-size:14px">📢 삑!까지 ${this.ph === 'hunt' ? this.sqLeft + '초' : '-'}</div>`}`;
     if (this._role !== role) { this._role = role; this.hRole.innerHTML = role; }
     if (!this.practice) {
       const toys = [...this.P.values()].filter(p => p.role === 'toy' && !p.gone), free = toys.filter(p => !p.caught);

@@ -1,5 +1,5 @@
 // 엄마의 대청소날~ — 서버·화면 공용 (맵, 물건, 규칙 숫자)
-export const PROTO = 4;
+export const PROTO = 5;
 
 export const CFG = {
   MAX_PLAYERS: 10,
@@ -116,7 +116,7 @@ export const MAPS = {
       ['mirror', 1.1, 11.8], ['curtain', 4.2, 16.9], ['blanket', 5.6, 14.6],
       ['desk', 10.6, 16.5], ['desk', 15.6, 16.5], ['bigplant', 9.5, 11.5], ['boxpile', 17.5, 15.8],
       ['rack', 24.5, 11.3], ['rack', 20.6, 15.9], ['mirror', 26.4, 12.5], ['shoes', 23.5, 16.6]],
-    objs: { block: 5, ball: 4, sock: 6, book: 4, duck: 3, roll: 3, cushion: 4, bin: 2, box: 4, plant: 2, basket: 3, chair: 3, lamp: 2, radio: 2, bucket: 2, slipper: 3, cup: 3 }
+    objs: { block: 12, ball: 10, sock: 14, book: 10, duck: 7, roll: 7, cushion: 10, bin: 5, box: 10, plant: 5, basket: 7, chair: 7, lamp: 5, radio: 5, bucket: 5, slipper: 7, cup: 7 }
   },
   kitchen: {
     name: '부엌', theme: 'kitchen',
@@ -145,7 +145,7 @@ export const MAPS = {
       ['bigplant', 1.4, 8.5], ['shoes', 24.4, 7.6], ['bear', 9.5, 9.5], ['curtain', 12.5, 8.9],
       ['bigplant', 17.4, 10.5], ['boxpile', 5.5, 13.4], ['blanket', 3.2, 12.3],
       ['dryer', 21.5, 11.5], ['bigplant', 24.4, 13.4], ['boxpile', 20, 13.4]],
-    objs: { cup: 6, apple: 4, milk: 4, pot: 4, kettle: 3, cooker: 2, rice: 3, chair: 4, bin: 2, bucket: 2, roll: 3, box: 4, basket: 2, plant: 2, cushion: 2, sock: 3, slipper: 3 }
+    objs: { cup: 14, apple: 10, milk: 10, pot: 10, kettle: 7, cooker: 5, rice: 7, chair: 10, bin: 5, bucket: 5, roll: 7, box: 10, basket: 5, plant: 5, cushion: 5, sock: 7, slipper: 7 }
   },
   attic: {
     name: '다락방', theme: 'attic',
@@ -173,7 +173,7 @@ export const MAPS = {
       ['tarp', 11.6, 7.2], ['oldsofa', 6.6, 9.1],
       ['tarp', 19.2, 8.1], ['boxpile', 22.6, 7.3],
       ['rack', 1.3, 10.9], ['chairs', 18, 11.4], ['blanket', 13.5, 11.3]],
-    objs: { trunk: 4, box: 8, fan: 2, lamp: 2, tv: 2, radio: 3, book: 5, basket: 2, chair: 3, bucket: 2, roll: 2, ball: 3, block: 3, sock: 3, plant: 1, cushion: 3 }
+    objs: { trunk: 10, box: 19, fan: 5, lamp: 5, tv: 5, radio: 7, book: 12, basket: 5, chair: 7, bucket: 5, roll: 5, ball: 7, block: 7, sock: 7, plant: 2, cushion: 7 }
   }
 };
 export const MAP_IDS = Object.keys(MAPS);
@@ -190,6 +190,9 @@ export function solid(M, x, z) {
 }
 
 // 같은 시드면 모두에게 같은 물건 배치
+// 물건 바닥 반지름 (장난감이 부딪히는 크기)
+export function objR(t) { return ({ s: .12, m: .2, l: .27 })[OBJ[t] ? OBJ[t].s : 'm']; }
+
 export function genWorld(mapId, seed) {
   const M = MAPS[mapId];
   const R = rng(seed);
@@ -198,31 +201,34 @@ export function genWorld(mapId, seed) {
   const objs = [];
   const far = (x, z, d) => Math.hypot(x - M.box[0], z - M.box[1]) > d && Math.hypot(x - M.mom[0], z - M.mom[1]) > 1.2 && Math.hypot(x - M.toy[0], z - M.toy[1]) > 1.2;
   const dec = M.decor.map(([t, x, z]) => placeDecor(M, t, x, z));
-  const ok = (x, z, r, small) => {
+  const doors = []; M.grid.forEach((row, z) => [...row].forEach((c, x) => { if (c === '+') doors.push([x + .5, z + .5]); }));
+  // 장난감이 물건에 부딪히니까, 물건끼리·가구와는 장난감이 지나갈 틈(0.5)을 남긴다
+  const GAP = .5;
+  const ok = (x, z, r, small, or) => {
     for (const [dx, dz] of [[r, 0], [-r, 0], [0, r], [0, -r]]) if (solid(M, x + dx, z + dz)) return false;
-    if (M.grid[Math.floor(z)][Math.floor(x)] === '+') return false;
+    for (const [a, b] of doors) if (Math.hypot(x - a, z - b) < 1.2) return false;
     for (const d of dec) {
-      const inX = Math.abs(x - d.x) < d.hw + .3, inZ = Math.abs(z - d.z) < d.hd + .3;
+      const inX = Math.abs(x - d.x) < d.hw + or + GAP, inZ = Math.abs(z - d.z) < d.hd + or + GAP;
       if (!inX || !inZ) continue;
       // 작은 물건은 침대·식탁·책상 밑에도 놓인다 (다리 피해서 안쪽에)
       if (small && DECOR[d.t].under && Math.abs(x - d.x) < d.hw - .15 && Math.abs(z - d.z) < d.hd - .15) continue;
       return false;
     }
-    for (const o of objs) if (Math.hypot(x - o.x, z - o.z) < .75) return false;
+    for (const o of objs) if (Math.hypot(x - o.x, z - o.z) < o.r + or + GAP) return false;
     return far(x, z, 1.6);
   };
   // 벽 쪽에 붙는 걸 좋아한다
   const wallish = (x, z) => solid(M, x + .6, z) || solid(M, x - .6, z) || solid(M, x, z + .6) || solid(M, x, z - .6);
   for (const t of types) {
-    const small = OBJ[t].s === 's';
-    for (let tries = 0; tries < 120; tries++) {
+    const small = OBJ[t].s === 's', or = objR(t);
+    for (let tries = 0; tries < 200; tries++) {
       let x, z;
       // 3분의 1은 가구 근처(또는 밑)에 모인다
       if (tries < 40 && R() < .35) { const d = dec[R() * dec.length | 0]; x = d.x + (R() - .5) * (d.hw * 2 + 1.2); z = d.z + (R() - .5) * (d.hd * 2 + 1.2); }
       else { x = 1 + R() * (W - 2); z = 1 + R() * (H - 2); }
-      if (x < 1 || z < 1 || x > W - 1 || z > H - 1 || !ok(x, z, .3, small)) continue;
-      if (!wallish(x, z) && R() < .45) continue;
-      objs.push({ t, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100 });
+      if (x < 1 || z < 1 || x > W - 1 || z > H - 1 || !ok(x, z, Math.max(.2, or), small, or)) continue;
+      if (!wallish(x, z) && R() < .35) continue;
+      objs.push({ t, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, r: or });
       break;
     }
   }
@@ -232,8 +238,8 @@ export function genWorld(mapId, seed) {
     if (!DECOR[d.t].under || !smalls.length || R() < .25) continue;
     const t = smalls[R() * smalls.length | 0];
     const x = d.x + (R() - .5) * Math.max(0, d.hw * 2 - .5), z = d.z + (R() - .5) * Math.max(0, d.hd * 2 - .5);
-    if (objs.some(o => Math.hypot(x - o.x, z - o.z) < .4)) continue;
-    objs.push({ t, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100 });
+    if (objs.some(o => Math.hypot(x - o.x, z - o.z) < o.r + objR(t) + GAP)) continue;
+    objs.push({ t, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, r: objR(t) });
   }
   return { M, W, H, objs, decor: dec };
 }
@@ -265,9 +271,11 @@ export function roomName(M, x, z) {
 
 // 벽·가구에 막히는 이동 (축 따로)
 // small = 작은 물건으로 변신한 장난감 (침대·식탁·책상 밑을 지나갈 수 있다)
-export function collide(W, x, z, nx, nz, r = CFG.RADIUS, small = false) {
+// objs = 진짜 물건에도 부딪힘 (장난감). 이미 겹쳐 있으면 빠져나가는 쪽으로는 움직일 수 있다
+export function collide(W, x, z, nx, nz, r = CFG.RADIUS, small = false, objs = false) {
   const M = W.M;
   const free = (px, pz) => {
+    if (objs) for (const o of W.objs) { const lim = o.r + r * .8, d = Math.hypot(px - o.x, pz - o.z); if (d < lim && d < Math.hypot(x - o.x, z - o.z) - 1e-6) return false; }
     if (solid(M, px - r, pz - r) || solid(M, px + r, pz - r) || solid(M, px - r, pz + r) || solid(M, px + r, pz + r)) return false;
     for (const d of W.decor) { if (small && DECOR[d.t].under) continue; if (Math.abs(px - d.x) < d.hw + r && Math.abs(pz - d.z) < d.hd + r) return false; }
     return true;

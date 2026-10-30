@@ -57,7 +57,7 @@ export class Room {
     this.inited = false; this.code = '';
     this.players = new Map(); this.order = [];
     this.host = null; this.banned = new Set();
-    this.settings = { map: 'random', moms: 1, max: 8, pub: false, name: '' };
+    this.settings = { map: 'random', moms: 1, max: 8, pub: false, name: '', blink: false, breath: false, sqFast: false, fzLimit: false };
     this.phase = 'lobby'; this.g = null; this.loop = null; this.backT = null;
     this.listed = false; this.postT = null; this.beat = null;
   }
@@ -121,7 +121,7 @@ export class Room {
     const live = s.pub && this.players.size > 0 && [...this.players.values()].some(p => p.on);
     if (!live && !this.listed) return;
     const body = live
-      ? { code: this.code, name: s.name || '이름 없는 집', host: hostP ? hostP.name : '?', n: this.players.size, max: s.max, map: s.map, moms: s.moms, phase: this.phase }
+      ? { code: this.code, name: s.name || '이름 없는 집', host: hostP ? hostP.name : '?', n: this.players.size, max: s.max, map: s.map, moms: s.moms, phase: this.phase, modes: ['blink', 'breath', 'sqFast', 'fzLimit'].filter(k => s[k]) }
       : { code: this.code, del: 1 };
     this.listed = !!live;
     lobbyStub(this.env).fetch('https://lobby/put', { method: 'POST', body: JSON.stringify(body) }).catch(() => {});
@@ -169,7 +169,7 @@ export class Room {
     const wasListed = this.listed; this.settings.pub = false;
     if (wasListed) this.post();
     this.players.clear(); this.order = []; this.host = null; this.g = null; this.phase = 'lobby'; this.inited = false; this.banned.clear();
-    this.settings = { map: 'random', moms: 1, max: 8, pub: false, name: '' };
+    this.settings = { map: 'random', moms: 1, max: 8, pub: false, name: '', blink: false, breath: false, sqFast: false, fzLimit: false };
   }
 
   cantStart() {
@@ -223,6 +223,7 @@ export class Room {
         if (m.moms) s.moms = clamp(m.moms | 0, 1, 2);
         if (typeof m.pub === 'boolean') s.pub = m.pub;
         if (typeof m.name === 'string') s.name = clean(m.name, 16) || s.name;
+        for (const k of ['blink', 'breath', 'sqFast', 'fzLimit']) if (typeof m[k] === 'boolean') s[k] = m[k];
         this.pushLobby();
         break;
       }
@@ -257,12 +258,13 @@ export class Room {
       P.set(p.id, {
         id: p.id, name: p.name, role: mom ? 'mom' : 'toy', x, z, a: mom ? 0 : Math.PI, form: null, fz: 0, mv: 0,
         caught: false, caughtAt: 0, stam: CFG.STAMINA, rest: 0, regen: 0, vac: 0, formT: 0, grace: 0,
-        sqT: CFG.SQUEAK * (.5 + Math.random() * .5), lastT: Date.now(), res: 0, resT: 0,
+        sqT: 30 * (.5 + Math.random() * .5), lastT: Date.now(), res: 0, resT: 0,
         stat: { catches: 0, miss: 0, survived: 0, rescues: 0, caughtN: 0, forms: 0 }, spot: null
       });
     }
     this.phase = 'game';
-    this.g = { mapId, seed, W, P, ph: 'prep', t: CFG.PREP, startAt: Date.now(), ended: false, log: [] };
+    const st = this.settings;
+    this.g = { mapId, seed, W, P, ph: 'prep', t: CFG.PREP, startAt: Date.now(), ended: false, log: [], sq: st.sqFast ? 20 : CFG.SQUEAK, modes: { blink: !!st.blink, breath: !!st.breath, sqFast: !!st.sqFast, fzLimit: !!st.fzLimit } };
     for (const p of ps) { p.ready = false; }
     for (const p of ps) this.send(p, this.startMsg(p));
     const last = Date.now(); this.g.prev = last;
@@ -276,7 +278,7 @@ export class Room {
     const roles = {}, names = {}, looks = {};
     for (const q of g.P.values()) { roles[q.id] = q.role; names[q.id] = q.name; if (q.role === 'mom') { const pl = this.players.get(q.id); looks[q.id] = pl ? pl.look : null; } }
     const me = g.P.get(p.id);
-    return { type: 'start', map: g.mapId, seed: g.seed, ph: g.ph, t: g.t, roles, names, looks, you: p.id, me: me && { x: me.x, z: me.z, a: me.a, form: me.form, caught: me.caught } };
+    return { type: 'start', map: g.mapId, seed: g.seed, ph: g.ph, t: g.t, modes: g.modes, sq: g.sq, roles, names, looks, you: p.id, me: me && { x: me.x, z: me.z, a: me.a, form: me.form, caught: me.caught } };
   }
 
   gameMsg(p, gp, m) {
@@ -331,7 +333,7 @@ export class Room {
         for (const t of g.P.values()) {
           if (t.role !== 'toy' || t.caught) continue;
           const d = Math.hypot(t.x - gp.x, t.z - gp.z);
-          if (d < CFG.VAC_R) { hit.push(t.id); t.sqT = CFG.SQUEAK; const pl = this.players.get(t.id); if (pl) this.send(pl, { type: 'pull', x: r2(gp.x), z: r2(gp.z), k: r2(Math.min(.9, d - .6)) }); }
+          if (d < CFG.VAC_R) { hit.push(t.id); t.sqT = g.sq; const pl = this.players.get(t.id); if (pl) this.send(pl, { type: 'pull', x: r2(gp.x), z: r2(gp.z), k: r2(Math.min(.9, d - .6)) }); }
         }
         this.all({ type: 'ev', e: 'vac', id: gp.id, x: r2(gp.x), z: r2(gp.z), hit });
         for (const id of hit) { const t = g.P.get(id); this.all({ type: 'ev', e: 'sq', id, x: r2(t.x), z: r2(t.z), v: 1 }); }
@@ -409,7 +411,7 @@ export class Room {
     g.t -= dt;
     if (g.ph === 'prep' && g.t <= 0) {
       g.ph = 'hunt'; g.t = CFG.HUNT;
-      for (const q of g.P.values()) { q.lastT = now; if (q.role === 'toy') q.sqT = CFG.SQUEAK * (.4 + Math.random() * .6); }
+      for (const q of g.P.values()) { q.lastT = now; if (q.role === 'toy') q.sqT = g.sq * (.4 + Math.random() * .6); }
       this.all({ type: 'ev', e: 'hunt' });
     }
     // 엄마 오래 끊김 → 교대
@@ -426,7 +428,7 @@ export class Room {
         } else if (!q.caught) {
           q.stat.survived += dt;
           q.sqT -= dt;
-          if (q.sqT <= 0) { q.sqT = CFG.SQUEAK; this.all({ type: 'ev', e: 'sq', id: q.id, x: r2(q.x), z: r2(q.z) }); }
+          if (q.sqT <= 0) { q.sqT = g.sq; this.all({ type: 'ev', e: 'sq', id: q.id, x: r2(q.x), z: r2(q.z) }); }
         }
       }
       if (g.t <= 0) { this.endGame('toy'); return; }

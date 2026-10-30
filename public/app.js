@@ -1,8 +1,8 @@
 // 엄마의 대청소날~ — 화면 흐름 · 접속 · 대기실
-import { PROTO, MAPS, CFG } from './shared.js?v=4';
-import { audioInit, setVol, S, bgm } from './sfx.js?v=4';
-import { Editor, loadLook, saveLook } from './editor.js?v=4';
-import { Game } from './game.js?v=4';
+import { PROTO, MAPS, CFG } from './shared.js?v=5';
+import { audioInit, setVol, S, bgm } from './sfx.js?v=5';
+import { Editor, loadLook, saveLook } from './editor.js?v=5';
+import { Game } from './game.js?v=5';
 
 const $ = id => document.getElementById(id);
 const LS = {
@@ -122,7 +122,7 @@ async function loadRooms() {
     const d = document.createElement('div'); d.className = 'room';
     d.innerHTML = `<div class="grow"><div class="nm"></div><div class="inf"></div></div><div class="cnt"></div>`;
     d.querySelector('.nm').textContent = r.name;
-    d.querySelector('.inf').textContent = `방장 ${r.host} · ${MAPN[r.map] || r.map} · 엄마 ${r.moms}명`;
+    d.querySelector('.inf').textContent = `방장 ${r.host} · ${MAPN[r.map] || r.map} · 엄마 ${r.moms}명${(r.modes || []).length ? ' · ' + r.modes.map(k => (MODES.find(m => m[1] === k) || [])[2] || '').join('') : ''}`;
     d.querySelector('.cnt').textContent = `${r.n} / ${r.max}`;
     d.onclick = () => { S.click(); join(r.code, false, { onErr: (m, k) => { toast(k === 'full' ? '방이 꽉 찼어요.' : m); loadRooms(); } }); };
     L.append(d);
@@ -218,6 +218,8 @@ $('sMap').onchange = () => send({ type: 'set', map: $('sMap').value });
 $('sMoms').onchange = () => send({ type: 'set', moms: +$('sMoms').value });
 $('sMax').onchange = () => send({ type: 'set', max: +$('sMax').value });
 $('sPub').onchange = () => send({ type: 'set', pub: $('sPub').checked });
+const MODES = [['mBlink', 'blink', '👀'], ['mBreath', 'breath', '😮‍💨'], ['mSqFast', 'sqFast', '📢'], ['mFzLimit', 'fzLimit', '🧊']];
+for (const [id, k] of MODES) $(id).onchange = () => send({ type: 'set', [k]: $(id).checked });
 $('sName').onchange = () => send({ type: 'set', name: $('sName').value });
 $('lChatF').onsubmit = e => { e.preventDefault(); const t = $('lChatIn').value.trim(); if (!t) return; send({ type: 'chat', text: t }); $('lChatIn').value = ''; };
 
@@ -227,7 +229,7 @@ function drawLobby() {
   $('lName').textContent = '🏠 ' + (s.name || '이름 없는 집');
   $('lCode').textContent = L.code;
   $('lCount').textContent = `${L.players.length} / ${s.max}`;
-  $('lMapInfo').textContent = `${MAPN[s.map]} · 엄마 ${s.moms}명 · ${s.pub ? '공개방' : '비공개방'}`;
+  $('lMapInfo').textContent = `${MAPN[s.map]} · 엄마 ${s.moms}명 · ${s.pub ? '공개방' : '비공개방'}${MODES.some(m => s[m[1]]) ? ' · ' + MODES.filter(m => s[m[1]]).map(m => m[2]).join('') : ''}`;
   const box = $('lPlayers'); box.textContent = '';
   for (const p of L.players) {
     const d = document.createElement('div'); d.className = 'pl';
@@ -261,7 +263,8 @@ function drawLobby() {
   $('lStart').disabled = !!why;
   $('lWhy').textContent = isHost ? why : (me.ready ? '방장이 시작하길 기다리는 중…' : '준비를 눌러 주세요!');
   // 설정 (방장만 바꿈)
-  for (const id of ['sMap', 'sMoms', 'sMax', 'sName', 'sPub']) $(id).disabled = !isHost;
+  for (const id of ['sMap', 'sMoms', 'sMax', 'sName', 'sPub', 'mBlink', 'mBreath', 'mSqFast', 'mFzLimit']) $(id).disabled = !isHost;
+  for (const [id, k] of MODES) $(id).checked = !!s[k];
   $('sMap').value = s.map; $('sMoms').value = s.moms; $('sMax').value = s.max; $('sPub').checked = !!s.pub;
   if (document.activeElement !== $('sName')) $('sName').value = s.name || '';
   $('lSetHint').textContent = isHost ? '' : '(방장만 바꿀 수 있어요)';

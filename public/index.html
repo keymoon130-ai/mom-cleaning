@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>엄마의 대청소날~</title>
+<link href="fonts/jua.css" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧹</text></svg>">
+<style>
+:root{--bg:#fff3c4;--ink:#4a2c1d;--pink:#ff6fa5;--pink2:#ff9cc4;--mint:#5fd0b5;--sky:#7cc4ff;--yel:#ffd34d;--card:#fffaf0;--line:#4a2c1d;--dim:#9a7b66;--red:#ff5a5a}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:'Jua',system-ui,sans-serif;overflow:hidden;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+input,button,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+.scr{position:fixed;inset:0;display:none;overflow:auto}
+.scr.on{display:block}
+/* 타일 바닥 + 거품 */
+.bgtile{background-color:var(--bg);background-image:linear-gradient(45deg,rgba(255,111,165,.08) 25%,transparent 25%,transparent 75%,rgba(255,111,165,.08) 75%),linear-gradient(45deg,rgba(255,111,165,.08) 25%,transparent 25%,transparent 75%,rgba(255,111,165,.08) 75%);background-size:56px 56px;background-position:0 0,28px 28px}
+.bub{position:fixed;border-radius:50%;border:2px solid rgba(124,196,255,.55);background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.9),rgba(180,225,255,.25) 45%,transparent 70%);pointer-events:none;animation:bub linear infinite}
+@keyframes bub{from{transform:translateY(0)}to{transform:translateY(-120vh)}}
+.wrap{max-width:760px;margin:0 auto;padding:18px 16px 40px;position:relative}
+.title{margin:5vh 0 0;text-align:center;font-size:clamp(40px,10vw,84px);line-height:1.1;letter-spacing:-1px;color:var(--pink);text-shadow:3px 3px 0 var(--ink),-1px -1px 0 var(--ink),1px -1px 0 var(--ink),-1px 1px 0 var(--ink),6px 7px 0 rgba(74,44,29,.18)}
+.title span{display:inline-block;animation:hop 1.1s ease-in-out infinite}
+.title .sq{color:var(--sky);animation:sway 1.4s ease-in-out infinite;transform-origin:50% 60%}
+@keyframes hop{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-14px) rotate(3deg)}}
+@keyframes sway{0%,100%{transform:rotate(-18deg) translateX(-3px)}50%{transform:rotate(18deg) translateX(5px)}}
+.sub{text-align:center;font-size:clamp(18px,4.4vw,26px);margin:14px 0 26px;color:var(--ink)}
+.sub b{color:var(--pink)}
+.menu{display:flex;flex-direction:column;gap:12px;max-width:340px;margin:0 auto}
+.btn{border:3px solid var(--line);border-radius:16px;background:#fff;padding:12px 18px;font-size:20px;box-shadow:0 5px 0 var(--line);transition:transform .08s,box-shadow .08s;position:relative}
+.btn:active{transform:translateY(4px);box-shadow:0 1px 0 var(--line)}
+.btn.big{font-size:24px;padding:14px}
+.btn.pk{background:var(--pink);color:#fff}
+.btn.mt{background:var(--mint)}
+.btn.sk{background:var(--sky)}
+.btn.yl{background:var(--yel)}
+.btn.sm{font-size:15px;padding:6px 12px;border-radius:12px;box-shadow:0 3px 0 var(--line)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+@media (hover:hover){.menu .btn:hover{animation:wob .5s ease-in-out infinite}}
+@keyframes wob{0%,100%{transform:rotate(0) scale(1.03)}25%{transform:rotate(-3deg) scale(1.05)}75%{transform:rotate(3deg) scale(1.05)}}
+.me{position:fixed;top:10px;right:12px;font-size:15px;background:#fff;border:2px solid var(--line);border-radius:12px;padding:5px 10px;z-index:5}
+.foot{text-align:center;color:var(--dim);font-size:13px;margin-top:22px}
+h2{margin:6px 0 12px;font-size:28px}
+.card{background:var(--card);border:3px solid var(--line);border-radius:18px;padding:14px;box-shadow:0 6px 0 rgba(74,44,29,.25)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.grow{flex:1}
+.back{position:absolute;left:16px;top:18px}
+.hd{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.hd h2{margin:0;flex:1}
+select,input[type=text]{border:3px solid var(--line);border-radius:12px;padding:7px 10px;background:#fff;font-size:16px}
+label.sel{display:flex;flex-direction:column;font-size:13px;color:var(--dim);gap:3px}
+.rooms{display:flex;flex-direction:column;gap:9px;margin-top:12px}
+.room{display:flex;align-items:center;gap:12px;background:#fff;border:3px solid var(--line);border-radius:14px;padding:10px 12px;cursor:pointer;box-shadow:0 4px 0 var(--line)}
+.room:active{transform:translateY(3px);box-shadow:0 1px 0 var(--line)}
+.room .nm{font-size:20px}
+.room .inf{color:var(--dim);font-size:14px}
+.room .cnt{font-size:22px;white-space:nowrap}
+.empty{text-align:center;padding:30px 10px;color:var(--dim);font-size:18px}
+.empty .big{font-size:52px}
+.modal{position:fixed;inset:0;background:rgba(74,44,29,.45);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+.modal.on{display:flex}
+.modal .card{width:100%;max-width:420px;max-height:92vh;overflow:auto}
+.codein{font-size:40px!important;text-align:center;letter-spacing:12px;text-transform:uppercase;width:100%}
+.err{color:var(--red);min-height:20px;font-size:15px;margin-top:6px}
+.toast{position:fixed;left:50%;top:16px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:12px;z-index:90;font-size:16px;display:none;max-width:90vw;text-align:center}
+/* 대기실 */
+.lob{display:grid;grid-template-columns:1.2fr 1fr;gap:12px}
+@media (max-width:700px){.lob{grid-template-columns:1fr}}
+.code{font-size:40px;letter-spacing:8px;background:#fff;border:3px dashed var(--line);border-radius:12px;padding:2px 12px;cursor:pointer}
+.pl{display:flex;align-items:center;gap:8px;background:#fff;border:2px solid var(--line);border-radius:12px;padding:7px 9px;margin-bottom:6px}
+.pl .n{flex:1;font-size:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tag{font-size:12px;border-radius:8px;padding:2px 7px;border:2px solid var(--line);white-space:nowrap}
+.tag.h{background:var(--yel)}.tag.r{background:var(--mint)}.tag.w{background:var(--pink2)}.tag.o{background:#ddd}
+.pl .ops button{font-size:12px;padding:3px 7px;border-radius:8px;border:2px solid var(--line);background:#fff;margin-left:3px}
+.chat{height:220px;overflow:auto;background:#fff;border:2px solid var(--line);border-radius:12px;padding:8px;font-size:15px;user-select:text;-webkit-user-select:text}
+.chat .s{color:var(--dim)}
+.chat b{color:var(--pink)}
+.sw{display:flex;align-items:center;gap:8px;cursor:pointer}
+.sw input{width:20px;height:20px;accent-color:var(--pink)}
+.setg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+.hint{color:var(--dim);font-size:14px}
+/* 설정 */
+.opt{display:flex;align-items:center;gap:10px;margin:9px 0;font-size:17px}
+.opt span{width:120px}
+.opt input[type=range]{flex:1;accent-color:var(--pink)}
+.keys{font-size:15px;line-height:1.7;background:#fff;border:2px solid var(--line);border-radius:12px;padding:8px 12px}
+.keys b{display:inline-block;min-width:54px;background:var(--yel);border:2px solid var(--line);border-radius:7px;text-align:center;margin-right:6px;font-size:13px}
+#gameRoot{position:fixed;inset:0;display:none;background:#000;z-index:20}
+#gameRoot.on{display:block}
+#reconn{position:fixed;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;background:rgba(255,243,196,.92);z-index:80;font-size:24px;text-align:center;padding:20px}
+#reconn.on{display:flex}
+</style>
+</head>
+<body>
+<div id="toast" class="toast"></div>
+
+<!-- 첫 화면 / 메뉴 -->
+<section id="sTitle" class="scr bgtile on">
+  <div class="me" id="meTag"></div>
+  <div class="wrap">
+    <h1 class="title" id="ttl"></h1>
+    <p class="sub">장난감들아 <b>각오해^^</b></p>
+    <div class="menu">
+      <button class="btn big pk" id="mQuick">🏃 빠른 참가</button>
+      <button class="btn mt" id="mCreate">🏠 방 만들기</button>
+      <button class="btn sk" id="mCode">🔑 코드로 참가</button>
+      <button class="btn yl" id="mEdit">💄 엄마 꾸미기</button>
+      <button class="btn" id="mPrac">🧸 혼자 연습하기</button>
+      <button class="btn" id="mSet">⚙️ 설정</button>
+    </div>
+    <div class="foot">엄마가 오기 전에 물건으로 변신해서 숨어요. 엄마는 다 치워 버려요.</div>
+  </div>
+</section>
+
+<!-- 빠른 참가 (공개방 찾기) -->
+<section id="sQuick" class="scr bgtile">
+  <div class="wrap">
+    <div class="hd"><button class="btn sm" data-back>← 뒤로</button><h2>공개방 찾기</h2><button class="btn sm" id="qRefresh">🔄 새로고침</button></div>
+    <div class="card">
+      <div class="row">
+        <label class="sel grow">맵<select id="fMap"><option value="">전부</option><option value="room">아이 방</option><option value="kitchen">부엌</option><option value="attic">다락방</option><option value="random">무작위</option></select></label>
+        <label class="sel grow">엄마 수<select id="fMoms"><option value="">전부</option><option value="1">엄마 1명</option><option value="2">엄마 2명</option></select></label>
+        <label class="sel grow">최대 인원<select id="fMax"><option value="">전부</option><option value="6">6명 이하</option><option value="8">8명 이하</option><option value="10">10명</option></select></label>
+      </div>
+    </div>
+    <div class="rooms" id="qList"></div>
+    <div class="hint" id="qInfo" style="text-align:center;margin-top:10px"></div>
+  </div>
+</section>
+
+<!-- 대기실 -->
+<section id="sLobby" class="scr bgtile">
+  <div class="wrap" style="max-width:980px">
+    <div class="hd">
+      <button class="btn sm" id="lLeave">← 나가기</button>
+      <h2 id="lName" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></h2>
+      <span class="code" id="lCode" title="눌러서 복사"></span>
+    </div>
+    <div class="lob">
+      <div class="card">
+        <div class="row" style="justify-content:space-between"><b style="font-size:20px">가족들 <span id="lCount"></span></b><span class="hint" id="lMapInfo"></span></div>
+        <div id="lPlayers" style="margin-top:8px"></div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn mt grow" id="lReady">준비!</button>
+          <button class="btn grow" id="lWant">🧹 엄마 지원</button>
+        </div>
+        <button class="btn pk big" id="lStart" style="width:100%;margin-top:10px">청소 시작!</button>
+        <div class="hint" id="lWhy" style="margin-top:6px;text-align:center"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="card" id="lSettings">
+          <b style="font-size:20px">방 설정</b> <span class="hint" id="lSetHint"></span>
+          <div class="setg">
+            <label class="sel">맵<select id="sMap"><option value="random">무작위</option><option value="room">아이 방</option><option value="kitchen">부엌</option><option value="attic">다락방</option></select></label>
+            <label class="sel">엄마 수<select id="sMoms"><option value="1">1명</option><option value="2">2명</option></select></label>
+            <label class="sel">최대 인원<select id="sMax"></select></label>
+            <label class="sel">방 이름<input type="text" id="sName" maxlength="16"></label>
+          </div>
+          <label class="sw"><input type="checkbox" id="sPub"> 공개방 (빠른 참가 목록에 보여요)</label>
+        </div>
+        <div class="card">
+          <div class="chat" id="lChat"></div>
+          <form id="lChatF" class="row" style="margin-top:8px"><input type="text" id="lChatIn" class="grow" maxlength="120" placeholder="할 말"><button class="btn sm">보내기</button></form>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 엄마 꾸미기 -->
+<section id="sEdit" class="scr bgtile"></section>
+
+<div id="gameRoot"></div>
+<div id="reconn"><div>🔌 연결이 끊겼어요</div><div id="reconnMsg" style="font-size:18px"></div><button class="btn sm" id="reconnQuit">그만두고 나가기</button></div>
+
+<!-- 닉네임 (처음 한 번) -->
+<div class="modal" id="mdNick"><div class="card">
+  <h2>이름이 뭐니?</h2>
+  <p class="hint">엄마가 부를 이름이에요. 나중에 설정에서만 바꿀 수 있어요.</p>
+  <form id="nickF"><input type="text" id="nickIn" maxlength="10" placeholder="최대 10글자" style="width:100%;font-size:22px"><div class="err" id="nickErr"></div><button class="btn pk" style="width:100%">이걸로 할래</button></form>
+</div></div>
+
+<!-- 코드로 참가 -->
+<div class="modal" id="mdCode"><div class="card">
+  <h2>방 코드</h2>
+  <form id="codeF"><input type="text" id="codeIn" class="codein" maxlength="4" autocomplete="off" placeholder="ABCD"><div class="err" id="codeErr"></div>
+  <div class="row"><button type="button" class="btn grow" data-close>취소</button><button class="btn pk grow">들어가기</button></div></form>
+</div></div>
+
+<!-- 설정 -->
+<div class="modal" id="mdSet"><div class="card">
+  <h2>설정</h2>
+  <div class="opt"><span>이름</span><input type="text" id="oName" maxlength="10" class="grow"></div>
+  <div class="opt"><span>마우스 감도</span><input type="range" id="oMouse" min="0.2" max="3" step="0.05"><em id="oMouseV"></em></div>
+  <div class="opt"><span>터치 감도</span><input type="range" id="oTouch" min="0.2" max="3" step="0.05"><em id="oTouchV"></em></div>
+  <div class="opt"><span>밝기</span><input type="range" id="oBright" min="0.6" max="1.6" step="0.05"><em id="oBrightV"></em></div>
+  <div class="opt"><span>효과음</span><input type="range" id="oSfx" min="0" max="1" step="0.05"><em id="oSfxV"></em></div>
+  <div class="opt"><span>배경음</span><input type="range" id="oBgm" min="0" max="1" step="0.05"><em id="oBgmV"></em></div>
+  <label class="sw opt"><input type="checkbox" id="oShake"> 화면 흔들림 끄기</label>
+  <label class="sw opt"><input type="checkbox" id="oLow"> 저사양 모드 (화질 낮춤)</label>
+  <details style="margin:8px 0"><summary style="cursor:pointer;font-size:17px">조작법</summary>
+  <div class="keys" id="keysBox"></div></details>
+  <button class="btn pk" id="oDone" style="width:100%">닫기</button>
+</div></div>
+
+<script type="module" src="app.js?v=1"></script>
+</body>
+</html>

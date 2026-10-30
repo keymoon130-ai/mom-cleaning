@@ -1,9 +1,9 @@
 // 엄마의 대청소날~ — 게임 화면 (레이캐스터 · 조작 · HUD)
-import { CFG, OBJ, DECOR, MAPS, MAP_IDS, genWorld, collide, solid, speedOf, roomName, WALL_H } from './shared.js?v=2';
-import { THREE, buildObj, buildDecor, buildRobot, buildToyBox, mergeStatic, objHeight, ROBOT_H } from './models.js?v=2';
-import { toyColor } from './sprites.js?v=2';
-import { S, bgm, audioInit } from './sfx.js?v=2';
-import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=2';
+import { CFG, OBJ, DECOR, MAPS, MAP_IDS, genWorld, collide, solid, speedOf, roomName, WALL_H } from './shared.js?v=3';
+import { THREE, buildObj, buildDecor, buildRobot, buildToyBox, mergeStatic, objHeight, ROBOT_H } from './models.js?v=3';
+import { toyColor } from './sprites.js?v=3';
+import { S, bgm, audioInit } from './sfx.js?v=3';
+import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=3';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -125,9 +125,16 @@ export class Game {
     // 물건 · 가구 (한 덩어리로 묶고, 클릭 판정은 보이지 않는 상자로)
     const statics = []; this.proxies = [];
     const pm = new THREE.MeshBasicMaterial({ visible: false }), pg = new THREE.BoxGeometry(1, 1, 1), bb = new THREE.Box3(), v = new THREE.Vector3();
-    const proxy = (grp, ud) => { grp.updateMatrixWorld(true); bb.setFromObject(grp); const m = new THREE.Mesh(pg, pm); bb.getCenter(m.position); bb.getSize(v); m.scale.copy(v); m.userData = ud; m.updateMatrixWorld(); this.proxies.push(m); };
+    const proxy = (grp, ud, minY) => { grp.updateMatrixWorld(true); bb.setFromObject(grp); if (minY) bb.min.y = Math.max(bb.min.y, minY); const m = new THREE.Mesh(pg, pm); bb.getCenter(m.position); bb.getSize(v); m.scale.copy(v); m.userData = ud; m.updateMatrixWorld(); this.proxies.push(m); };
     this.Wd.objs.forEach((o, i) => { const gr = buildObj(o.t, ol); gr.position.set(o.x, 0, o.z); gr.rotation.y = (i * 2.399) % TAU; statics.push(gr); proxy(gr, { k: 'o', i }); });
-    for (const d of this.Wd.decor) { const gr = buildDecor(d.t, ol); gr.position.set(d.x, 0, d.z); gr.rotation.y = d.rot; statics.push(gr); proxy(gr, { k: 'd' }); }
+    const shadeM = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: .22, depthWrite: false });
+    for (const d of this.Wd.decor) {
+      const gr = buildDecor(d.t, ol); gr.position.set(d.x, 0, d.z); gr.rotation.y = d.rot; statics.push(gr);
+      const un = DECOR[d.t].under;
+      proxy(gr, { k: 'd' }, un);
+      // 밑 공간 그늘 (보이긴 하지만 살짝 어둡게)
+      if (un) { const sh = new THREE.Mesh(new THREE.PlaneGeometry(d.hw * 2, d.hd * 2), shadeM); sh.rotation.x = -Math.PI / 2; sh.position.set(d.x, .004, d.z); root.add(sh); }
+    }
     root.add(mergeStatic(statics));
     this.toyBox = buildToyBox(ol); this.toyBox.position.set(M.box[0], 0, M.box[1]); root.add(this.toyBox); proxy(this.toyBox, { k: 'b' });
   }
@@ -354,13 +361,17 @@ export class Game {
     const now = performance.now(); if (now < (this.formCd || 0)) return;
     this.formCd = now + CFG.FORM_CD * 1000;
     const t = this.Wd.objs[i].t;
+    if (OBJ[t].s !== 's' && this.underDecor()) { this.say('가구 밑에서는 커질 수 없어요. 밖으로 나와요!'); return; }
     if (this.practice) { this.myP().form = t; }
     else this.net.send({ type: 'form', o: i });
     S.poof(); this.fx.push({ k: 'poof', t: 0 });
     this.say(`${OBJ[t].n}(으)로 변신! ${OBJ[t].s === 's' ? '작아서 빨라요' : OBJ[t].s === 'l' ? '커서 느려요' : ''}`);
   }
+  // 지금 가구(침대·식탁 등) 밑에 있는지
+  underDecor() { const me = this.myP(), r = CFG.RADIUS; return this.Wd.decor.some(d => Math.abs(me.x - d.x) < d.hw + r && Math.abs(me.z - d.z) < d.hd + r); }
   revert() {
     if (this.role !== 'toy' || this.isSpec() || !this.myP().form) return;
+    if (this.underDecor()) { this.say('가구 밑에서는 커질 수 없어요. 밖으로 나와요!'); return; }
     const now = performance.now(); if (now < (this.formCd || 0)) return; this.formCd = now + CFG.FORM_CD * 1000;
     if (this.practice) this.myP().form = null; else this.net.send({ type: 'form', o: -1 });
     S.poof();
@@ -547,7 +558,8 @@ export class Game {
         if (l > 1) { f /= l; s /= l; }
         const sp = speedOf(this.role, me.form) * dt, c = Math.cos(this.yaw), sn = Math.sin(this.yaw);
         const nx = me.x + (c * f - sn * s) * sp, nz = me.z + (sn * f + c * s) * sp;
-        const [x, z] = collide(this.Wd, me.x, me.z, nx, nz); me.x = x; me.z = z; this.moving = true;
+        const small = this.role === 'toy' && me.form && OBJ[me.form].s === 's';
+        const [x, z] = collide(this.Wd, me.x, me.z, nx, nz, undefined, small); me.x = x; me.z = z; this.moving = true;
         if (this.role === 'mom') { me.stepT = (me.stepT || 0) - dt; if (me.stepT <= 0) { me.stepT = .36; S.slipper(.35, 0); } }
       }
     }

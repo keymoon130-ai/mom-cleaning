@@ -110,6 +110,8 @@ const DECS = {
 };
 
 export function buildObj(t, outline = true) { const m = new Mk(); (OBJS[t] || OBJS.box)(m); const g = m.build(outline); g.userData.t = t; return g; }
+// 변신 모습 (물건이든 가구든)
+export function buildForm(t, outline = true) { return OBJS[t] || !DECS[t] ? buildObj(t, outline) : buildDecor(t, outline); }
 export function buildDecor(t, outline = true) { const m = new Mk(); DECS[t](m); return m.build(outline); }
 export function buildRobot(col, outline = true) {
   const m = new Mk();
@@ -138,7 +140,7 @@ export function buildToyBox(outline = true) {
 const HT = {};
 export function objHeight(t) {
   if (HT[t] !== undefined) return HT[t];
-  const b = new THREE.Box3().setFromObject(buildObj(t, false));
+  const b = new THREE.Box3().setFromObject(OBJS[t] || !DECS[t] ? buildObj(t, false) : buildDecor(t, false));
   return HT[t] = b.max.y;
 }
 export const ROBOT_H = .38;

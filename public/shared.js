@@ -1,5 +1,5 @@
 // 엄마의 대청소날~ — 서버·화면 공용 (맵, 물건, 규칙 숫자)
-export const PROTO = 3;
+export const PROTO = 4;
 
 export const CFG = {
   MAX_PLAYERS: 10,
@@ -18,7 +18,7 @@ export const CFG = {
   FORM_R: 2.2,       // 변신 가능한 거리
   GRACE: 3,          // 구출 직후 무적
   RADIUS: 0.22,
-  SPEED: { mom: 3.2, toy: 3.6, s: 3.9, m: 3.2, l: 2.5 },
+  SPEED: { mom: 3.2, toy: 3.6, s: 3.9, m: 3.2, l: 2.5, xl: 2.2 },
   MOM_OFF_SWAP: 30,  // 엄마가 이만큼 끊겨 있으면 장난감 하나가 엄마가 된다
   LOOK_W: 32, LOOK_H: 56
 };
@@ -278,10 +278,20 @@ export function collide(W, x, z, nx, nz, r = CFG.RADIUS, small = false) {
   return [rx, rz];
 }
 
+// 변신할 수 있는 모습 = 물건 26종 + 가구 24종 (가구는 '아주 큼')
+export function formInfo(f) {
+  if (OBJ[f]) return OBJ[f];
+  if (DECOR[f]) return { n: DECOR[f].n, s: 'xl' };
+  return null;
+}
+// 가구 모습일 때 손이 닿는 여유 (덩치가 크니까 가장자리 기준)
+export function formReach(f) { return DECOR[f] ? Math.max(DECOR[f].w, DECOR[f].d) / 2 : 0; }
+export function formRadius(f) { return DECOR[f] ? Math.min(.35, Math.min(DECOR[f].w, DECOR[f].d) / 2) : CFG.RADIUS; }
 export function speedOf(role, form) {
   if (role === 'mom') return CFG.SPEED.mom;
   if (!form) return CFG.SPEED.toy;
-  return CFG.SPEED[OBJ[form] ? OBJ[form].s : 'm'];
+  const fi = formInfo(form);
+  return CFG.SPEED[fi ? fi.s : 'm'];
 }
 
 // 엄마 모습: 팔레트(최대 64색) + 32x56 글자 (팔레트 번호, '.' = 투명)

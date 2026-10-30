@@ -1,6 +1,6 @@
 // 엄마의 대청소날~ — 방 서버 (Cloudflare Workers + Durable Objects)
 // Room: 방 하나. Lobby: 공개방 목록 (하나뿐)
-import { CFG, OBJ, MAPS, MAP_IDS, genWorld, speedOf, lookValid, roomName, PROTO } from '../public/shared.js';
+import { CFG, OBJ, MAPS, MAP_IDS, genWorld, speedOf, lookValid, roomName, formReach, PROTO } from '../public/shared.js';
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type' };
@@ -297,7 +297,12 @@ export class Room {
       case 'form': {
         if (gp.role !== 'toy' || gp.caught || now < gp.formT) return;
         if (m.o === -1) { gp.form = null; }
-        else {
+        else if (m.d !== undefined) { // 가구로 변신 (가장자리까지 거리)
+          const d = g.W.decor[m.d | 0]; if (!d) return;
+          const ex = Math.max(0, Math.abs(gp.x - d.x) - d.hw), ez = Math.max(0, Math.abs(gp.z - d.z) - d.hd);
+          if (Math.hypot(ex, ez) > CFG.FORM_R + .6) return;
+          gp.form = d.t; gp.stat.forms++;
+        } else {
           const o = g.W.objs[m.o | 0]; if (!o || Math.hypot(o.x - gp.x, o.z - gp.z) > CFG.FORM_R + .6) return;
           gp.form = o.t; gp.stat.forms++;
         }
@@ -310,11 +315,11 @@ export class Room {
         if (now - (gp.grabT || 0) < 350) return; gp.grabT = now;
         if (m.k === 'p') {
           const t = g.P.get(String(m.id || ''));
-          if (t && t.role === 'toy' && !t.caught && now > t.grace && Math.hypot(t.x - gp.x, t.z - gp.z) < CFG.GRAB_RANGE + 1) { this.catchToy(gp, t); return; }
-        } else if (m.k !== 'o') return;
+          if (t && t.role === 'toy' && !t.caught && now > t.grace && Math.hypot(t.x - gp.x, t.z - gp.z) < CFG.GRAB_RANGE + 1 + formReach(t.form)) { this.catchToy(gp, t); return; }
+        } else if (m.k !== 'o' && m.k !== 'd') return;
         // 진짜 물건(또는 헛짚음) = 헛손질
         gp.stat.miss++; gp.stam--; gp.regen = 0;
-        const ev = { type: 'ev', e: 'miss', id: gp.id, i: m.i | 0 };
+        const ev = { type: 'ev', e: 'miss', id: gp.id }; if (m.k === 'd') ev.d = m.i | 0; else if (m.k === 'o') ev.i = m.i | 0;
         if (gp.stam <= 0) { gp.rest = CFG.REST; gp.stam = 0; ev.rest = 1; }
         this.all(ev);
         break;

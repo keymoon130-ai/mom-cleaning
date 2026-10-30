@@ -1,9 +1,9 @@
 // 엄마의 대청소날~ — 게임 화면 (레이캐스터 · 조작 · HUD)
-import { CFG, OBJ, DECOR, MAPS, MAP_IDS, genWorld, collide, solid, speedOf, roomName, WALL_H } from './shared.js?v=3';
-import { THREE, buildObj, buildDecor, buildRobot, buildToyBox, mergeStatic, objHeight, ROBOT_H } from './models.js?v=3';
-import { toyColor } from './sprites.js?v=3';
-import { S, bgm, audioInit } from './sfx.js?v=3';
-import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=3';
+import { CFG, OBJ, DECOR, MAPS, MAP_IDS, genWorld, collide, solid, speedOf, roomName, WALL_H, formInfo, formReach, formRadius } from './shared.js?v=4';
+import { THREE, buildObj, buildDecor, buildForm, buildRobot, buildToyBox, mergeStatic, objHeight, ROBOT_H } from './models.js?v=4';
+import { toyColor } from './sprites.js?v=4';
+import { S, bgm, audioInit } from './sfx.js?v=4';
+import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=4';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -128,13 +128,13 @@ export class Game {
     const proxy = (grp, ud, minY) => { grp.updateMatrixWorld(true); bb.setFromObject(grp); if (minY) bb.min.y = Math.max(bb.min.y, minY); const m = new THREE.Mesh(pg, pm); bb.getCenter(m.position); bb.getSize(v); m.scale.copy(v); m.userData = ud; m.updateMatrixWorld(); this.proxies.push(m); };
     this.Wd.objs.forEach((o, i) => { const gr = buildObj(o.t, ol); gr.position.set(o.x, 0, o.z); gr.rotation.y = (i * 2.399) % TAU; statics.push(gr); proxy(gr, { k: 'o', i }); });
     const shadeM = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: .22, depthWrite: false });
-    for (const d of this.Wd.decor) {
+    this.Wd.decor.forEach((d, di) => {
       const gr = buildDecor(d.t, ol); gr.position.set(d.x, 0, d.z); gr.rotation.y = d.rot; statics.push(gr);
       const un = DECOR[d.t].under;
-      proxy(gr, { k: 'd' }, un);
+      proxy(gr, { k: 'd', i: di }, un);
       // 밑 공간 그늘 (보이긴 하지만 살짝 어둡게)
       if (un) { const sh = new THREE.Mesh(new THREE.PlaneGeometry(d.hw * 2, d.hd * 2), shadeM); sh.rotation.x = -Math.PI / 2; sh.position.set(d.x, .004, d.z); root.add(sh); }
-    }
+    });
     root.add(mergeStatic(statics));
     this.toyBox = buildToyBox(ol); this.toyBox.position.set(M.box[0], 0, M.box[1]); root.add(this.toyBox); proxy(this.toyBox, { k: 'b' });
   }
@@ -150,7 +150,7 @@ export class Game {
       const tx = new THREE.CanvasTexture(p.lookCv); tx.magFilter = THREE.NearestFilter; tx.minFilter = THREE.NearestFilter; tx.colorSpace = THREE.SRGBColorSpace;
       const m = new THREE.Mesh(this.momGeo, new THREE.MeshLambertMaterial({ map: tx, alphaTest: .5, side: THREE.DoubleSide }));
       m.castShadow = true; piv.add(m); piv.userData.plane = m; piv.userData.tex = tx;
-    } else piv.add(key === 'robot' ? buildRobot(new THREE.Color(p.col).getHex(), !this.ST.low) : buildObj(key, !this.ST.low));
+    } else piv.add(key === 'robot' ? buildRobot(new THREE.Color(p.col).getHex(), !this.ST.low) : buildForm(key, !this.ST.low));
     piv.userData.k = 'p'; piv.userData.id = p.id;
     this.world.add(piv); p.obj = piv; p.objKey = key;
     return piv;
@@ -341,31 +341,41 @@ export class Game {
     const me = this.myP(); if (this.role !== 'toy' || !me || me.caught || this.ph !== 'hunt' || this.practice) return false;
     return Math.hypot(me.x - this.M.box[0], me.z - this.M.box[1]) < CFG.RESCUE_R && [...this.P.values()].some(p => p.caught);
   }
+  // 변신할 대상: 물건 또는 가구 (가구는 가장자리 기준 거리)
   formTarget() {
-    const me = this.myP(); if (!me) return -1;
-    // 화면 가운데 물건이 가까우면 그거
-    if (this.pick && this.pick.k === 'o') { const o = this.Wd.objs[this.pick.i]; if (o && Math.hypot(o.x - me.x, o.z - me.z) < CFG.FORM_R) return this.pick.i; }
-    let best = -1, bs = 1e9;
+    const me = this.myP(); if (!me) return null;
+    const dEdge = d => Math.hypot(Math.max(0, Math.abs(me.x - d.x) - d.hw), Math.max(0, Math.abs(me.z - d.z) - d.hd));
+    const mk = (k, i) => { if (k === 'o') { const o = this.Wd.objs[i]; return { k, i, t: o.t, x: o.x, z: o.z }; } const d = this.Wd.decor[i]; return { k, i, t: d.t, x: d.x, z: d.z }; };
+    // 화면 가운데 것이 가까우면 그거
+    const pk = this.pick;
+    if (pk && pk.k === 'o') { const o = this.Wd.objs[pk.i]; if (o && Math.hypot(o.x - me.x, o.z - me.z) < CFG.FORM_R) return mk('o', pk.i); }
+    if (pk && pk.k === 'd' && pk.i !== undefined && dEdge(this.Wd.decor[pk.i]) < CFG.FORM_R) return mk('d', pk.i);
+    let best = null, bs = 1e9;
     this.Wd.objs.forEach((o, i) => {
       const d = Math.hypot(o.x - me.x, o.z - me.z); if (d > CFG.FORM_R) return;
       const ad = Math.abs(angDiff(Math.atan2(o.z - me.z, o.x - me.x), this.yaw)); if (ad > .95) return;
-      const s = ad * 1.6 + d; if (s < bs) { bs = s; best = i; }
+      const sc = ad * 1.6 + d; if (sc < bs) { bs = sc; best = ['o', i]; }
     });
-    return best;
+    this.Wd.decor.forEach((dc, i) => {
+      const d = dEdge(dc); if (d > CFG.FORM_R) return;
+      const ad = Math.abs(angDiff(Math.atan2(dc.z - me.z, dc.x - me.x), this.yaw)); if (ad > .95 && d > .3) return;
+      const sc = ad * 1.6 + d + .3; if (sc < bs) { bs = sc; best = ['d', i]; }
+    });
+    return best ? mk(best[0], best[1]) : null;
   }
   act() {
     if (this.role !== 'toy' || this.isSpec()) return;
     if (this.nearBox()) { this.resHold = true; return; }
-    const i = this.formTarget();
-    if (i < 0) { this.say('주변에 변신할 물건이 없어요'); return; }
+    const ft = this.formTarget();
+    if (!ft) { this.say('주변에 변신할 게 없어요'); return; }
     const now = performance.now(); if (now < (this.formCd || 0)) return;
+    const t = ft.t, fi = formInfo(t);
+    if (fi.s !== 's' && this.underDecor()) { this.say('가구 밑에서는 커질 수 없어요. 밖으로 나와요!'); return; }
     this.formCd = now + CFG.FORM_CD * 1000;
-    const t = this.Wd.objs[i].t;
-    if (OBJ[t].s !== 's' && this.underDecor()) { this.say('가구 밑에서는 커질 수 없어요. 밖으로 나와요!'); return; }
     if (this.practice) { this.myP().form = t; }
-    else this.net.send({ type: 'form', o: i });
+    else this.net.send(ft.k === 'd' ? { type: 'form', d: ft.i } : { type: 'form', o: ft.i });
     S.poof(); this.fx.push({ k: 'poof', t: 0 });
-    this.say(`${OBJ[t].n}(으)로 변신! ${OBJ[t].s === 's' ? '작아서 빨라요' : OBJ[t].s === 'l' ? '커서 느려요' : ''}`);
+    this.say(`${fi.n}(으)로 변신! ${({ s: '작아서 빨라요', l: '커서 느려요', xl: '가구라 엄청 느려요. 벽에 붙어서 얼음!' })[fi.s] || ''}`);
   }
   // 지금 가구(침대·식탁 등) 밑에 있는지
   underDecor() { const me = this.myP(), r = CFG.RADIUS; return this.Wd.decor.some(d => Math.abs(me.x - d.x) < d.hw + r && Math.abs(me.z - d.z) < d.hd + r); }
@@ -395,13 +405,14 @@ export class Game {
   primary() {
     if (this.isSpec()) { this.nextSpec(1); return; }
     if (this.role !== 'mom') return;
-    if (this.practice) { this.hand = 1; S.grab(); const pk = this.pick; if (pk && pk.k === 'p' && pk.d < CFG.GRAB_RANGE) { this.banner('찾았다!', '엄마 눈에는 이렇게 보여요', 2); S.caught(); } else if (pk && pk.k === 'o' && pk.d < CFG.GRAB_RANGE) { this.say('그건 진짜 ' + OBJ[this.Wd.objs[pk.i].t].n + '이에요'); S.miss(); } return; }
+    if (this.practice) { this.hand = 1; S.grab(); const pk = this.pick; if (pk && pk.k === 'p' && pk.d < CFG.GRAB_RANGE) { this.banner('찾았다!', '엄마 눈에는 이렇게 보여요', 2); S.caught(); } else if (pk && (pk.k === 'o' || pk.k === 'd') && pk.d < CFG.GRAB_RANGE) { const ob = pk.k === 'o' ? this.Wd.objs[pk.i] : this.Wd.decor[pk.i]; this.say('그건 진짜 ' + formInfo(ob.t).n + '이에요'); S.miss(); } return; }
     if (this.ph !== 'hunt') return;
     if (this.restT > 0) { this.say('헉헉… 쉬는 중'); return; }
     const pk = this.pick; this.hand = 1; S.grab();
-    if (!pk || pk.d > CFG.GRAB_RANGE) { if (pk && (pk.k === 'o' || pk.k === 'p')) this.say('손이 안 닿아요. 더 가까이!'); return; }
+    if (!pk || pk.k === 'b' || pk.d > CFG.GRAB_RANGE) { if (pk && (pk.k === 'o' || pk.k === 'p' || pk.k === 'd')) this.say('손이 안 닿아요. 더 가까이!'); return; }
     if (pk.k === 'p') this.net.send({ type: 'grab', k: 'p', id: pk.id });
     else if (pk.k === 'o') this.net.send({ type: 'grab', k: 'o', i: pk.i });
+    else if (pk.k === 'd') this.net.send({ type: 'grab', k: 'd', i: pk.i });
   }
 
   // ───────── 연습 모드 ─────────
@@ -462,8 +473,8 @@ export class Game {
       case 'hunt': this.enterHunt(); break;
       case 'form': if (p && m.id !== this.me) p.form = m.f; break;
       case 'miss': {
-        const o = this.Wd.objs[m.i];
-        if (m.id === this.me) { S.miss(); this.say(`헛손질! ${o ? '진짜 ' + OBJ[o.t].n + '이었어요' : ''}`); this.doShake(.25); }
+        const o = m.d !== undefined ? this.Wd.decor[m.d] : this.Wd.objs[m.i];
+        if (m.id === this.me) { S.miss(); this.say(`헛손질! ${o ? '진짜 ' + formInfo(o.t).n + '이었어요' : ''}`); this.doShake(.25); }
         else this.posSound(p, 'miss');
         if (o) this.fx.push({ k: 'miss', x: o.x, z: o.z, t: 0 });
         if (m.rest) { this.addFeed(`😵 ${nm} 엄마 기진맥진! 3초 쉬는 중`); if (m.id === this.me) { S.tired(); this.banner('헉… 헉…', '헛손질을 너무 많이 했어요. 3초 쉬어요', 2.6); } }
@@ -473,7 +484,7 @@ export class Game {
       case 'caught': {
         const t = this.P.get(m.id), by = this.P.get(m.by);
         if (t) { t.caught = true; t.form = null; }
-        this.addFeed(`🧹 ${by ? by.name : '엄마'}가 ${t ? t.name : '?'}${m.f ? `(${OBJ[m.f].n})` : ''}를 치웠어요!`);
+        this.addFeed(`🧹 ${by ? by.name : '엄마'}가 ${t ? t.name : '?'}${m.f ? `(${formInfo(m.f).n})` : ''}를 치웠어요!`);
         this.fx.push({ k: 'grab', x: m.x, z: m.z, t: 0 });
         if (m.id === this.me) { S.caught(); this.banner('치워졌다…', '장난감 상자 안에서 구경해요. 친구가 상자 앞에서 E를 꾹 누르면 탈출!', 3.5); this.frozen = false; this.spec = null; this.doShake(.6); }
         else if (m.by === this.me) { S.caught(); S.win(); this.banner('찾았다!', `${t ? t.name : ''} 치웠어요`, 1.6); }
@@ -558,8 +569,8 @@ export class Game {
         if (l > 1) { f /= l; s /= l; }
         const sp = speedOf(this.role, me.form) * dt, c = Math.cos(this.yaw), sn = Math.sin(this.yaw);
         const nx = me.x + (c * f - sn * s) * sp, nz = me.z + (sn * f + c * s) * sp;
-        const small = this.role === 'toy' && me.form && OBJ[me.form].s === 's';
-        const [x, z] = collide(this.Wd, me.x, me.z, nx, nz, undefined, small); me.x = x; me.z = z; this.moving = true;
+        const small = this.role === 'toy' && me.form && formInfo(me.form).s === 's';
+        const [x, z] = collide(this.Wd, me.x, me.z, nx, nz, this.role === 'toy' && me.form ? formRadius(me.form) : undefined, small); me.x = x; me.z = z; this.moving = true;
         if (this.role === 'mom') { me.stepT = (me.stepT || 0) - dt; if (me.stepT <= 0) { me.stepT = .36; S.slipper(.35, 0); } }
       }
     }
@@ -611,7 +622,7 @@ export class Game {
     } else {
       const h = tgt.role === 'mom' ? MOM_H : (tgt.form ? objHeight(tgt.form) : ROBOT_H);
       const ty = tgt.role === 'mom' ? 1.3 : Math.max(.2, h * .7);
-      const want = tgt.role === 'mom' ? 2.6 : 1.2 + h * 1.9;
+      const want = tgt.role === 'mom' ? 2.6 : Math.min(3.4, 1.2 + h * 1.9);
       const cp = Math.cos(pitch), fx = cp * Math.cos(yaw), fy = Math.sin(pitch), fz = cp * Math.sin(yaw);
       // 벽 · 바닥 · 천장에 안 박히게 당긴다
       let d = .05;
@@ -637,6 +648,8 @@ export class Game {
       const self = p.id === this.me;
       let vis = !p.caught && !p.gone && !(self && this.role === 'mom' && !this.isSpec());
       if (vis && (p.fl & 8) && Math.sin(tt * 20) < 0) vis = false;
+      // 벽 때문에 카메라가 내 몸(큰 가구) 안으로 들어오면 내 몸은 안 그린다
+      if (vis && self && this.role === 'toy' && !this.isSpec() && this.camDist < formReach(p.form) + .28) vis = false;
       o.visible = vis; if (!vis) continue;
       const fz = self ? this.frozen : !!(p.fl & 1), mv = self ? this.moving : !!(p.fl & 2);
       if (p.role === 'mom') {
@@ -666,7 +679,7 @@ export class Game {
       if (out.length && out[out.length - 1].ref === o) continue;
       let x, z;
       if (u.k === 'o') { const ob = this.Wd.objs[u.i]; x = ob.x; z = ob.z; }
-      else if (u.k === 'p') { const pp = this.P.get(u.id); x = pp.x; z = pp.z; }
+      else if (u.k === 'p') { const pp = this.P.get(u.id); const rr = formReach(pp.form), dd = Math.max(0, Math.hypot(pp.x - me.x, pp.z - me.z) - rr), a = Math.atan2(pp.z - me.z, pp.x - me.x); x = me.x + Math.cos(a) * dd; z = me.z + Math.sin(a) * dd; }
       else { x = h.point.x; z = h.point.z; }
       out.push({ k: u.k, i: u.i, id: u.id, ref: o, dist: h.distance, d: Math.hypot(x - me.x, z - me.z) });
     }
@@ -819,8 +832,8 @@ export class Game {
     if (this.role === 'toy' && !this.isSpec() && !this.ended) {
       if (this.nearBox()) prompt = isPhone ? '🆘 버튼 꾹: 친구 구출' : '🆘 E 꾹: 친구들 구출';
       else {
-        const i = this.formTarget();
-        if (i >= 0) { const o = this.Wd.objs[i]; const s = this.proj(o.x, o.z, objHeight(o.t) + .15); if (s) { g.font = `${Math.round(20 * sc * this.dpr)}px Jua`; g.fillStyle = '#ff6fa5'; g.strokeStyle = '#fff'; g.lineWidth = 4; const yy = s[1] - Math.abs(Math.sin(t / 200)) * 8 * sc; g.strokeText('▼', s[0], yy); g.fillText('▼', s[0], yy); } prompt = `${isPhone ? '🎭' : 'E'}: ${OBJ[o.t].n}(으)로 변신`; }
+        const o = this.formTarget();
+        if (o) { const s = this.proj(o.x, o.z, objHeight(o.t) + .15); if (s) { g.font = `${Math.round(20 * sc * this.dpr)}px Jua`; g.fillStyle = '#ff6fa5'; g.strokeStyle = '#fff'; g.lineWidth = 4; const yy = s[1] - Math.abs(Math.sin(t / 200)) * 8 * sc; g.strokeText('▼', s[0], yy); g.fillText('▼', s[0], yy); } prompt = `${isPhone ? '🎭' : 'E'}: ${formInfo(o.t).n}(으)로 변신`; }
       }
     }
     // 구출 진행
@@ -877,7 +890,7 @@ export class Game {
       const sp = '🧽'.repeat(this.stam) + '<span style="opacity:.25">' + '🧽'.repeat(Math.max(0, CFG.STAMINA - this.stam)) + '</span>';
       role = `<div style="font-size:19px">🧹 엄마</div><div>${sp}</div><div style="font-size:14px">${this.restT > 0 ? '😵 쉬는 중…' : ''}🌀 청소기 ${this.vacCd > 0 ? this.vacCd + '초' : '<b style="color:#3fbf6a">준비됨</b> (Space)'}</div>`;
     } else if (me && me.caught) role = `<div style="font-size:19px">📦 잡혔어요</div><div style="font-size:14px">친구가 구해 주길 기다려요</div>`;
-    else role = `<div style="font-size:19px">🧸 ${me && me.form ? OBJ[me.form].n + ' <span style="font-size:13px">(' + ({ s: '빠름', m: '보통', l: '느림' })[OBJ[me.form].s] + ')</span>' : '장난감 그대로'}</div>
+    else role = `<div style="font-size:19px">🧸 ${me && me.form ? formInfo(me.form).n + ' <span style="font-size:13px">(' + ({ s: '빠름', m: '보통', l: '느림', xl: '아주 느림' })[formInfo(me.form).s] + ')</span>' : '장난감 그대로'}</div>
 <div style="font-size:14px">${this.frozen ? '🧊 <b style="color:#3b8fd6">얼음 중</b>' : '흔들흔들 (Shift = 얼음)'}</div>${this.practice ? '' : `<div style="font-size:14px">📢 삑!까지 ${this.ph === 'hunt' ? this.sqLeft + '초' : '-'}</div>`}`;
     if (this._role !== role) { this._role = role; this.hRole.innerHTML = role; }
     if (!this.practice) {
@@ -904,7 +917,7 @@ export class Game {
 <div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:12px" data-g>
  <div style="background:#fffaf0;border:3px solid #4a2c1d;border-radius:16px;padding:10px"><div style="font-size:18px;margin-bottom:6px">🗺️ 다들 여기 숨어 있었어요</div><canvas data-map style="width:100%;image-rendering:pixelated;border-radius:8px"></canvas><div data-list style="font-size:15px;margin-top:6px"></div></div>
  <div style="display:flex;flex-direction:column;gap:12px">
-  <div style="background:#fffaf0;border:3px solid #4a2c1d;border-radius:16px;padding:10px"><div style="font-size:18px">🏅 제일 오래 버틴 장난감</div><div style="font-size:24px;margin-top:4px">${surv ? esc(surv.name) + ` <span style="font-size:16px">${fmtT(surv.surv)} 버팀${surv.spot && surv.spot.f ? ` · ${OBJ[surv.spot.f].n}` : ''}</span>` : '-'}</div></div>
+  <div style="background:#fffaf0;border:3px solid #4a2c1d;border-radius:16px;padding:10px"><div style="font-size:18px">🏅 제일 오래 버틴 장난감</div><div style="font-size:24px;margin-top:4px">${surv ? esc(surv.name) + ` <span style="font-size:16px">${fmtT(surv.surv)} 버팀${surv.spot && surv.spot.f ? ` · ${formInfo(surv.spot.f).n}` : ''}</span>` : '-'}</div></div>
   <div style="background:#fffaf0;border:3px solid #4a2c1d;border-radius:16px;padding:10px"><div style="font-size:18px">👑 최고의 엄마</div><div data-moms style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap"></div></div>
   <div style="text-align:center;font-size:17px" data-cd></div>
  </div>
@@ -933,7 +946,7 @@ export class Game {
       if (t.caught) { g.strokeStyle = '#ff5a5a'; g.lineWidth = 3; g.beginPath(); g.moveTo(sp.x * S2 - 5, sp.z * S2 - 5); g.lineTo(sp.x * S2 + 5, sp.z * S2 + 5); g.moveTo(sp.x * S2 + 5, sp.z * S2 - 5); g.lineTo(sp.x * S2 - 5, sp.z * S2 + 5); g.stroke(); }
       g.fillStyle = '#4a2c1d'; g.font = '11px Jua'; g.fillText(t.name, sp.x * S2, sp.z * S2 - 11);
       const d = document.createElement('div');
-      d.innerHTML = `<span style="color:${col}">●</span> <b>${esc(t.name)}</b> — ${esc(sp.room)}에서 ${sp.f ? OBJ[sp.f].n + '(으)로' : '변신 없이'} ${t.caught ? '<span style="color:#ff5a5a">잡힘</span>' : '<span style="color:#3fbf6a">끝까지 생존!</span>'} · ${fmtT(t.surv)}${t.rescues ? ` · 구출 ${t.rescues}번` : ''}`;
+      d.innerHTML = `<span style="color:${col}">●</span> <b>${esc(t.name)}</b> — ${esc(sp.room)}에서 ${sp.f ? formInfo(sp.f).n + '(으)로' : '변신 없이'} ${t.caught ? '<span style="color:#ff5a5a">잡힘</span>' : '<span style="color:#3fbf6a">끝까지 생존!</span>'} · ${fmtT(t.surv)}${t.rescues ? ` · 구출 ${t.rescues}번` : ''}`;
       list.append(d);
     });
     let cd = 14; const cdEl = el.querySelector('[data-cd]');

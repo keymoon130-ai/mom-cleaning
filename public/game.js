@@ -1,42 +1,39 @@
 // 엄마의 대청소날~ — 게임 화면 (레이캐스터 · 조작 · HUD)
-import { CFG, OBJ, DECOR, MAPS, MAP_IDS, genWorld, collide, solid, speedOf, roomName } from './shared.js?v=1';
-import { objSprite, decorSprite, boxSprite, toySprite, toyColor } from './sprites.js?v=1';
-import { S, bgm, audioInit } from './sfx.js?v=1';
-import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=1';
+import { CFG, OBJ, DECOR, MAPS, MAP_IDS, genWorld, collide, solid, speedOf, roomName, WALL_H } from './shared.js?v=2';
+import { THREE, buildObj, buildDecor, buildRobot, buildToyBox, mergeStatic, objHeight, ROBOT_H } from './models.js?v=2';
+import { toyColor } from './sprites.js?v=2';
+import { S, bgm, audioInit } from './sfx.js?v=2';
+import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=2';
 
-const TAU = Math.PI * 2, FOV = 70 * Math.PI / 180, TANF = Math.tan(FOV / 2);
+const TAU = Math.PI * 2;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const angDiff = (a, b) => { let d = (a - b) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; };
 const isPhone = matchMedia('(pointer:coarse)').matches;
-const MOM_H = .95, MOM_W = MOM_H * CFG.LOOK_W / CFG.LOOK_H, TOY_H = .34;
+const MOM_H = 1.7, MOM_W = MOM_H * CFG.LOOK_W / CFG.LOOK_H, MOM_EYE = 1.45;
 
-// ───────── 텍스처 ─────────
-function texFrom(w, h, fn) {
-  const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); fn(g, w, h);
-  return { w, h, d: new Uint32Array(g.getImageData(0, 0, w, h).data.buffer.slice(0)) };
-}
-function spriteTex(cv) {
-  const d = new Uint32Array(cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data.buffer.slice(0));
-  return { w: cv.width, h: cv.height, d };
+// ───────── 벽지 · 바닥 ─────────
+function cvs(w, h, fn) { const c = document.createElement('canvas'); c.width = w; c.height = h; fn(c.getContext('2d'), w, h); return c; }
+function tex(c, rx = 1, ry = 1) {
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry);
+  t.magFilter = THREE.NearestFilter; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
 }
 const THEMES = {
   room: {
-    wall: texFrom(32, 32, (g) => { g.fillStyle = '#fde7ef'; g.fillRect(0, 0, 32, 32); g.fillStyle = '#f9cfe0'; for (let x = 0; x < 32; x += 8) g.fillRect(x, 0, 3, 32); g.fillStyle = '#ffffff'; for (let y = 4; y < 26; y += 8) for (let x = 5; x < 32; x += 8) g.fillRect(x, y, 2, 2); g.fillStyle = '#c9935a'; g.fillRect(0, 27, 32, 5); g.fillStyle = '#a8693c'; g.fillRect(0, 27, 32, 1); }),
-    floor: texFrom(32, 32, (g) => { g.fillStyle = '#e2b47c'; g.fillRect(0, 0, 32, 32); g.fillStyle = '#cf9c63'; for (let y = 0; y < 32; y += 8) g.fillRect(0, y, 32, 1); g.fillRect(10, 0, 1, 8); g.fillRect(24, 8, 1, 8); g.fillRect(6, 16, 1, 8); g.fillRect(19, 24, 1, 8); }),
-    ceil: '#fff8ee', fog: [255, 244, 230]
+    wall: g => { g.fillStyle = '#fde7ef'; g.fillRect(0, 0, 32, 72); g.fillStyle = '#f9cfe0'; for (let x = 0; x < 32; x += 8) g.fillRect(x, 0, 3, 72); g.fillStyle = '#fff'; for (let y = 4; y < 62; y += 8) for (let x = 5; x < 32; x += 8) g.fillRect(x, y, 2, 2); g.fillStyle = '#c9935a'; g.fillRect(0, 65, 32, 7); g.fillStyle = '#a8693c'; g.fillRect(0, 65, 32, 1); },
+    floor: g => { g.fillStyle = '#e2b47c'; g.fillRect(0, 0, 32, 32); g.fillStyle = '#cf9c63'; for (let y = 0; y < 32; y += 8) g.fillRect(0, y, 32, 1); g.fillRect(10, 0, 1, 8); g.fillRect(24, 8, 1, 8); g.fillRect(6, 16, 1, 8); g.fillRect(19, 24, 1, 8); },
+    ceil: 0xfff8ee, fog: 0xfff4e6, hemi: [0xffffff, 0xe2b47c, 1.25], sun: .9, trim: 0xc9935a, fogN: 10, fogF: 30
   },
   kitchen: {
-    wall: texFrom(32, 32, (g) => { g.fillStyle = '#f4fbff'; g.fillRect(0, 0, 32, 32); g.fillStyle = '#cfe6f2'; for (let i = 0; i < 32; i += 8) { g.fillRect(i, 0, 1, 20); g.fillRect(0, i, 32, 1); } g.fillStyle = '#9fd7c4'; g.fillRect(0, 20, 32, 3); g.fillStyle = '#e8f0f4'; g.fillRect(0, 23, 32, 9); g.fillStyle = '#b8c8d0'; g.fillRect(0, 31, 32, 1); }),
-    floor: texFrom(32, 32, (g) => { for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) { g.fillStyle = (x + y) % 2 ? '#ffffff' : '#f2c6c6'; g.fillRect(x * 16, y * 16, 16, 16); } g.fillStyle = 'rgba(0,0,0,.06)'; g.fillRect(0, 0, 32, 1); g.fillRect(0, 16, 32, 1); g.fillRect(0, 0, 1, 32); g.fillRect(16, 0, 1, 32); }),
-    ceil: '#ffffff', fog: [245, 250, 255]
+    wall: g => { g.fillStyle = '#f4fbff'; g.fillRect(0, 0, 32, 72); g.fillStyle = '#cfe6f2'; for (let i = 0; i < 32; i += 8) g.fillRect(i, 0, 1, 40); for (let i = 0; i < 40; i += 8) g.fillRect(0, i, 32, 1); g.fillStyle = '#9fd7c4'; g.fillRect(0, 40, 32, 4); g.fillStyle = '#e8f0f4'; g.fillRect(0, 44, 32, 28); g.fillStyle = '#b8c8d0'; g.fillRect(0, 66, 32, 6); },
+    floor: g => { for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) { g.fillStyle = (x + y) % 2 ? '#ffffff' : '#f2c6c6'; g.fillRect(x * 16, y * 16, 16, 16); } g.fillStyle = 'rgba(0,0,0,.06)'; g.fillRect(0, 0, 32, 1); g.fillRect(0, 16, 32, 1); g.fillRect(0, 0, 1, 32); g.fillRect(16, 0, 1, 32); },
+    ceil: 0xffffff, fog: 0xf5faff, hemi: [0xffffff, 0xd8e8f0, 1.25], sun: .9, trim: 0xb8c8d0, fogN: 10, fogF: 30
   },
   attic: {
-    wall: texFrom(32, 32, (g) => { g.fillStyle = '#8e6a4a'; g.fillRect(0, 0, 32, 32); g.fillStyle = '#7a5a3c'; for (let y = 0; y < 32; y += 6) g.fillRect(0, y, 32, 1); g.fillStyle = '#5e432c'; g.fillRect(12, 3, 2, 2); g.fillRect(25, 15, 2, 2); g.fillRect(4, 22, 2, 2); g.fillStyle = 'rgba(255,255,255,.07)'; g.fillRect(0, 1, 32, 1); }),
-    floor: texFrom(32, 32, (g) => { g.fillStyle = '#7d5a3e'; g.fillRect(0, 0, 32, 32); g.fillStyle = '#6a4a31'; for (let x = 0; x < 32; x += 8) g.fillRect(x, 0, 1, 32); g.fillRect(3, 12, 1, 1); g.fillRect(20, 26, 1, 1); g.fillStyle = 'rgba(255,255,255,.05)'; g.fillRect(2, 0, 2, 32); }),
-    ceil: '#4a3424', fog: [70, 52, 38], dim: 1
+    wall: g => { g.fillStyle = '#8e6a4a'; g.fillRect(0, 0, 32, 72); g.fillStyle = '#7a5a3c'; for (let y = 0; y < 72; y += 6) g.fillRect(0, y, 32, 1); g.fillStyle = '#5e432c'; g.fillRect(12, 9, 2, 2); g.fillRect(25, 33, 2, 2); g.fillRect(4, 51, 2, 2); g.fillStyle = '#5e432c'; g.fillRect(0, 66, 32, 6); },
+    floor: g => { g.fillStyle = '#7d5a3e'; g.fillRect(0, 0, 32, 32); g.fillStyle = '#6a4a31'; for (let x = 0; x < 32; x += 8) g.fillRect(x, 0, 1, 32); g.fillRect(3, 12, 1, 1); g.fillRect(20, 26, 1, 1); },
+    ceil: 0x4a3424, fog: 0x3a2c20, hemi: [0xffe2b0, 0x6a4a30, 1.05], sun: .6, trim: 0x5e432c, fogN: 6, fogF: 20
   }
 };
-const hexRGB = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
 
 export class Game {
   constructor({ root, net, start, settings, lobby, onQuit, practice }) {
@@ -53,32 +50,103 @@ export class Game {
   // ───────── 준비 ─────────
   build() {
     const r = this.root; r.textContent = '';
-    r.innerHTML = `<canvas data-c style="position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;touch-action:none"></canvas>
+    r.innerHTML = `<canvas data-c style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block"></canvas>
+<canvas data-h style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></canvas>
 <div data-ui style="position:absolute;inset:0;pointer-events:none;font-family:Jua,sans-serif"></div>`;
-    this.cv = r.querySelector('[data-c]'); this.g = this.cv.getContext('2d');
+    this.cv = r.querySelector('[data-c]'); this.hc = r.querySelector('[data-h]'); this.g = this.hc.getContext('2d');
     this.ui = r.querySelector('[data-ui]');
-    this.off = document.createElement('canvas'); this.og = this.off.getContext('2d');
+    const low = this.ST.low;
+    this.R = new THREE.WebGLRenderer({ canvas: this.cv, antialias: !low && !isPhone, powerPreference: 'high-performance' });
+    this.R.outputColorSpace = THREE.SRGBColorSpace;
+    this.shadows = !low && !isPhone;
+    this.R.shadowMap.enabled = this.shadows; this.R.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.scene = new THREE.Scene();
+    this.cam = new THREE.PerspectiveCamera(72, 1, .04, 60); this.cam.rotation.order = 'YXZ';
+    this.ray = new THREE.Raycaster(); this.ray.far = 9;
+    this.camDist = 1.5; this.dt = .016; this.bodyYaw = 0;
+    this.momGeo = new THREE.PlaneGeometry(MOM_W, MOM_H); this.momGeo.translate(0, MOM_H / 2, 0);
     this.resize = () => this.onResize(); addEventListener('resize', this.resize); this.onResize();
     this.feed = []; this.banners = []; this.bubbles = []; this.pings = []; this.fx = []; this.chatLog = [];
     this.shake = 0; this.hand = 0; this.resP = 0; this.resShow = 0;
   }
   onResize() {
-    const dpr = Math.min(2, devicePixelRatio || 1);
-    this.cv.width = innerWidth * dpr; this.cv.height = innerHeight * dpr; this.dpr = dpr;
-    const H = this.ST.low ? 180 : 288, W = Math.round(H * innerWidth / innerHeight);
-    this.W = clamp(W, 240, 720); this.H = H;
-    this.off.width = this.W; this.off.height = this.H;
-    this.img = this.og.createImageData(this.W, this.H); this.u32 = new Uint32Array(this.img.data.buffer);
-    this.zb = new Float32Array(this.W);
-    this.f = (this.W / 2) / TANF;
+    const dpr = devicePixelRatio || 1;
+    const pr = this.ST.low ? .6 : isPhone ? Math.min(dpr, 1.3) : Math.min(dpr, 1.5);
+    this.R.setPixelRatio(pr); this.R.setSize(innerWidth, innerHeight, false);
+    this.cam.aspect = innerWidth / innerHeight; this.cam.updateProjectionMatrix();
+    this.dpr = Math.min(2, dpr); this.hc.width = innerWidth * this.dpr; this.hc.height = innerHeight * this.dpr;
   }
 
   setWorld(mapId, seed) {
     this.mapId = mapId; this.Wd = genWorld(mapId, seed); this.M = this.Wd.M;
-    const th = THEMES[this.M.theme]; this.th = th; this.ceilRGB = hexRGB(th.ceil);
-    this.objTex = {}; for (const k in OBJ) this.objTex[k] = spriteTex(objSprite(k));
-    this.decTex = {}; for (const k in DECOR) this.decTex[k] = spriteTex(decorSprite(k));
-    this.boxTex = [spriteTex(boxSprite(false)), spriteTex(boxSprite(true))];
+    const th = THEMES[this.M.theme]; this.th = th;
+    if (this.world) this.scene.remove(this.world);
+    if (this.P) for (const p of this.P.values()) p.obj = null;
+    const S = this.scene, W = this.Wd.W, H = this.Wd.H, M = this.M, ol = !this.ST.low;
+    const root = new THREE.Group(); this.world = root; S.add(root);
+    S.background = new THREE.Color(th.fog); S.fog = new THREE.Fog(th.fog, th.fogN, th.fogF);
+    const b = this.ST.bright || 1;
+    root.add(new THREE.HemisphereLight(th.hemi[0], th.hemi[1], th.hemi[2] * b));
+    root.add(new THREE.AmbientLight(0xffffff, .25 * b));
+    const sun = new THREE.DirectionalLight(0xfff2dd, th.sun * b);
+    sun.position.set(W * .35, 9, H * .25); sun.target.position.set(W / 2, 0, H / 2); root.add(sun, sun.target);
+    if (this.shadows) {
+      sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+      const sc = sun.shadow.camera; sc.left = -W * .75; sc.right = W * .75; sc.top = H * .9; sc.bottom = -H * .9; sc.near = 1; sc.far = 30; sun.shadow.bias = -.0015;
+    }
+    // 바닥 · 천장
+    const fl = new THREE.Mesh(new THREE.PlaneGeometry(W, H), new THREE.MeshLambertMaterial({ map: tex(cvs(32, 32, th.floor), W, H) }));
+    fl.rotation.x = -Math.PI / 2; fl.position.set(W / 2, 0, H / 2); fl.receiveShadow = true; root.add(fl);
+    const ce = new THREE.Mesh(new THREE.PlaneGeometry(W, H), new THREE.MeshLambertMaterial({ color: th.ceil }));
+    ce.rotation.x = Math.PI / 2; ce.position.set(W / 2, WALL_H, H / 2); root.add(ce);
+    // 벽 (바닥과 맞닿은 칸만)
+    const g = M.grid, cells = [], doors = [];
+    const isW = (x, z) => !g[z] || g[z][x] === undefined || g[z][x] === '#';
+    for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) {
+      if (g[z][x] === '+') doors.push([x, z]);
+      if (!isW(x, z)) continue;
+      let nb = false; for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) if (!isW(x + dx, z + dz)) nb = true;
+      if (nb) cells.push([x, z]);
+    }
+    const wm = new THREE.InstancedMesh(new THREE.BoxGeometry(1, WALL_H, 1), new THREE.MeshLambertMaterial({ map: tex(cvs(32, 72, th.wall)) }), cells.length);
+    const mx = new THREE.Matrix4();
+    cells.forEach(([x, z], i) => wm.setMatrixAt(i, mx.makeTranslation(x + .5, WALL_H / 2, z + .5)));
+    wm.receiveShadow = true; wm.castShadow = this.shadows; wm.userData.k = 'w'; root.add(wm); this.wallMesh = wm;
+    // 문 위 상인방
+    if (doors.length) {
+      const lm = new THREE.InstancedMesh(new THREE.BoxGeometry(1, .32, 1), new THREE.MeshLambertMaterial({ color: th.trim }), doors.length);
+      doors.forEach(([x, z], i) => lm.setMatrixAt(i, mx.makeTranslation(x + .5, WALL_H - .16, z + .5)));
+      root.add(lm);
+    }
+    // 방마다 천장 등
+    const lampM = new THREE.MeshBasicMaterial({ color: M.theme === 'attic' ? 0xffd27a : 0xfffbe8 });
+    const lampG = new THREE.CylinderGeometry(.28, .32, .05, 16);
+    for (const [x0, z0, x1, z1] of M.rooms) { const l = new THREE.Mesh(lampG, lampM); l.position.set((x0 + x1 + 1) / 2, WALL_H - .03, (z0 + z1 + 1) / 2); root.add(l); }
+    // 물건 · 가구 (한 덩어리로 묶고, 클릭 판정은 보이지 않는 상자로)
+    const statics = []; this.proxies = [];
+    const pm = new THREE.MeshBasicMaterial({ visible: false }), pg = new THREE.BoxGeometry(1, 1, 1), bb = new THREE.Box3(), v = new THREE.Vector3();
+    const proxy = (grp, ud) => { grp.updateMatrixWorld(true); bb.setFromObject(grp); const m = new THREE.Mesh(pg, pm); bb.getCenter(m.position); bb.getSize(v); m.scale.copy(v); m.userData = ud; m.updateMatrixWorld(); this.proxies.push(m); };
+    this.Wd.objs.forEach((o, i) => { const gr = buildObj(o.t, ol); gr.position.set(o.x, 0, o.z); gr.rotation.y = (i * 2.399) % TAU; statics.push(gr); proxy(gr, { k: 'o', i }); });
+    for (const d of this.Wd.decor) { const gr = buildDecor(d.t, ol); gr.position.set(d.x, 0, d.z); gr.rotation.y = d.rot; statics.push(gr); proxy(gr, { k: 'd' }); }
+    root.add(mergeStatic(statics));
+    this.toyBox = buildToyBox(ol); this.toyBox.position.set(M.box[0], 0, M.box[1]); root.add(this.toyBox); proxy(this.toyBox, { k: 'b' });
+  }
+
+  // 사람마다 3D 몸 (엄마 = 바닥에 수직으로 선 그림판, 장난감 = 로봇 또는 변신한 물건)
+  playerObj(p) {
+    const key = p.role === 'mom' ? 'mom' : (p.form || 'robot');
+    if (p.obj && p.objKey === key) return p.obj;
+    if (p.obj) this.world.remove(p.obj);
+    const piv = new THREE.Group();
+    if (key === 'mom') {
+      if (!p.lookCv) p.lookCv = lookToCanvas(p.look || defaultLook());
+      const tx = new THREE.CanvasTexture(p.lookCv); tx.magFilter = THREE.NearestFilter; tx.minFilter = THREE.NearestFilter; tx.colorSpace = THREE.SRGBColorSpace;
+      const m = new THREE.Mesh(this.momGeo, new THREE.MeshLambertMaterial({ map: tx, alphaTest: .5, side: THREE.DoubleSide }));
+      m.castShadow = true; piv.add(m); piv.userData.plane = m; piv.userData.tex = tx;
+    } else piv.add(key === 'robot' ? buildRobot(new THREE.Color(p.col).getHex(), !this.ST.low) : buildObj(key, !this.ST.low));
+    piv.userData.k = 'p'; piv.userData.id = p.id;
+    this.world.add(piv); p.obj = piv; p.objKey = key;
+    return piv;
   }
 
   init(st) {
@@ -93,7 +161,7 @@ export class Game {
     this.role = me.role;
     if (st.me) { me.x = st.me.x; me.z = st.me.z; me.form = st.me.form; me.caught = st.me.caught; this.yaw = st.me.a; }
     else this.yaw = 0;
-    this.pitch = this.role === 'mom' ? -.25 : -.18;
+    this.pitch = this.role === 'mom' ? -.15 : -.35; this.bodyYaw = this.yaw;
     this.frozen = false; this.stam = CFG.STAMINA; this.vacCd = 0; this.restT = 0; this.sqLeft = CFG.SQUEAK;
     this.spec = null;
     this.banner(this.role === 'mom' ? '🧹 너는 엄마야!' : '🧸 너는 장난감이야!', this.role === 'mom' ? '30초 동안 단장하고, 장난감을 전부 치워!' : '엄마가 단장하는 30초 동안 물건으로 변신해서 숨어! (E)', 4.5);
@@ -103,7 +171,7 @@ export class Game {
   initPractice() {
     this.me = 'me'; this.setWorld(MAP_IDS[0], Math.random() * 1e9 | 0);
     this.P = new Map([['me', { id: 'me', name: '나', role: 'toy', x: this.M.toy[0], z: this.M.toy[1], a: 0, form: null, fl: 0, buf: [], col: toyColor(0), look: null }]]);
-    this.role = 'toy'; this.ph = 'hunt'; this.tLeft = 0; this.tAt = performance.now(); this.yaw = Math.PI; this.pitch = -.18;
+    this.role = 'toy'; this.ph = 'hunt'; this.tLeft = 0; this.tAt = performance.now(); this.yaw = Math.PI; this.pitch = -.35; this.bodyYaw = this.yaw;
     this.frozen = false; this.stam = CFG.STAMINA; this.vacCd = 0; this.restT = 0; this.sqLeft = 99;
     this.pracMom = false; this.pracBody = null;
     this.banner('🧸 혼자 연습하기', isPhone ? '변신해 보고, 👀 엄마 눈으로 어떻게 보이는지 확인해요' : 'E 변신 · Q 원래대로 · Shift 얼음 · R 엄마 눈으로 보기 · M 맵 바꾸기', 6);
@@ -111,7 +179,8 @@ export class Game {
   }
   setLook(id, v) {
     const p = this.P.get(id); if (!p) return;
-    p.look = v; p.lookCv = lookToCanvas(v || defaultLook()); p.lookTex = spriteTex(p.lookCv);
+    p.look = v; p.lookCv = lookToCanvas(v || defaultLook());
+    if (p.obj && p.objKey === 'mom') { const t = p.obj.userData.tex; t.image = p.lookCv; t.needsUpdate = true; }
     if (this.cornerCvs) this.drawCorner();
   }
 
@@ -186,7 +255,7 @@ export class Game {
     this.hudBuild();
   }
   lock() { if (isPhone || this.editor) return; try { const p = this.cv.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
-  look(dx, dy) { this.yaw = (this.yaw + dx) % TAU; this.pitch = clamp(this.pitch - dy, -1, .55); }
+  look(dx, dy) { this.yaw = (this.yaw + dx) % TAU; const fp = this.role === 'mom' && !this.isSpec(); this.pitch = clamp(this.pitch - dy, fp ? -1.45 : -1.3, fp ? 1.35 : .25); }
   onKey(e, down) {
     if (this.editor) return;
     if (this.chatOpen) return;
@@ -327,10 +396,18 @@ export class Game {
   // ───────── 연습 모드 ─────────
   pracSwap() {
     const me = this.myP();
-    if (!this.pracMom) { this.pracBody = { x: me.x, z: me.z, form: me.form, fz: this.frozen }; this.pracMom = true; this.role = 'mom'; me.x -= Math.cos(this.yaw) * 1.6; me.z -= Math.sin(this.yaw) * 1.6; const [x, z] = collide(this.Wd, this.pracBody.x, this.pracBody.z, me.x, me.z); me.x = x; me.z = z; this.yaw = Math.atan2(this.pracBody.z - me.z, this.pracBody.x - me.x); this.pitch = -.4; this.say('엄마 눈으로 보는 중 (R로 돌아가기, 클릭해 보기)'); }
-    else { me.x = this.pracBody.x; me.z = this.pracBody.z; this.pracMom = false; this.role = 'toy'; this.pracBody = null; this.pitch = -.18; this.say('다시 장난감으로'); }
+    if (!this.pracMom) {
+      this.P.set('body', { id: 'body', name: '나', role: 'toy', x: me.x, z: me.z, a: this.bodyYaw, form: me.form, fl: this.frozen ? 1 : 0, buf: [], col: me.col });
+      this.pracMom = true; this.role = 'mom';
+      const [x, z] = collide(this.Wd, me.x, me.z, me.x - Math.cos(this.yaw) * 1.8, me.z - Math.sin(this.yaw) * 1.8); me.x = x; me.z = z;
+      const b = this.P.get('body'); this.yaw = Math.atan2(b.z - me.z, b.x - me.x); this.pitch = -.45;
+      this.say('엄마 눈으로 보는 중 (R로 돌아가기, 클릭해 보기)');
+    } else {
+      const b = this.P.get('body'); me.x = b.x; me.z = b.z; me.form = b.form; if (b.obj) this.world.remove(b.obj); this.P.delete('body');
+      this.pracMom = false; this.role = 'toy'; this.pitch = -.35; this.say('다시 장난감으로');
+    }
   }
-  pracMap() { const i = (MAP_IDS.indexOf(this.mapId) + 1) % MAP_IDS.length; this.setWorld(MAP_IDS[i], Math.random() * 1e9 | 0); const me = this.myP(); me.x = this.M.toy[0]; me.z = this.M.toy[1]; me.form = null; this.pracMom = false; this.role = 'toy'; this.say(this.M.name + '(으)로 바꿨어요'); }
+  pracMap() { this.P.delete('body'); const i = (MAP_IDS.indexOf(this.mapId) + 1) % MAP_IDS.length; this.setWorld(MAP_IDS[i], Math.random() * 1e9 | 0); const me = this.myP(); me.x = this.M.toy[0]; me.z = this.M.toy[1]; me.form = null; this.pracMom = false; this.role = 'toy'; this.say(this.M.name + '(으)로 바꿨어요'); }
 
   // ───────── 서버 메시지 ─────────
   onMsg(m) {
@@ -416,7 +493,7 @@ export class Game {
         const o = this.P.get(m.old); if (o) o.gone = true;
         if (p) { p.role = 'mom'; p.caught = false; p.form = null; this.setLook(m.id, m.look); }
         this.addFeed(`👩 엄마가 나가서 ${nm}가 새 엄마가 됐어요!`);
-        if (m.id === this.me) { this.role = 'mom'; this.frozen = false; this.pitch = -.25; this.spec = null; this.banner('네가 이제 엄마야!', '장난감을 전부 치워요!', 3); }
+        if (m.id === this.me) { this.role = 'mom'; this.frozen = false; this.pitch = -.15; this.spec = null; this.banner('네가 이제 엄마야!', '장난감을 전부 치워요!', 3); }
         break;
       }
     }
@@ -436,11 +513,11 @@ export class Game {
   sendState() {
     if (this.practice || !this.net || this.ended) return;
     const me = this.myP(); if (!me || me.caught) return;
-    const s = [Math.round(me.x * 100), Math.round(me.z * 100), Math.round(this.yaw * 100), this.frozen ? 1 : 0, this.moving ? 1 : 0].join();
+    const s = [Math.round(me.x * 100), Math.round(me.z * 100), Math.round(this.bodyYaw * 100), this.frozen ? 1 : 0, this.moving ? 1 : 0].join();
     const now = performance.now();
     if (s === this.lastSent && now - (this.lastSentT || 0) < 500) return;
     this.lastSent = s; this.lastSentT = now;
-    this.net.send({ type: 'st', x: me.x, z: me.z, a: this.yaw, fz: this.frozen ? 1 : 0, mv: this.moving ? 1 : 0 });
+    this.net.send({ type: 'st', x: me.x, z: me.z, a: this.bodyYaw, fz: this.frozen ? 1 : 0, mv: this.moving ? 1 : 0 });
     if (this.resHold && this.nearBox()) this.net.send({ type: 'res' });
   }
 
@@ -453,6 +530,8 @@ export class Game {
     this.raf = requestAnimationFrame(tt => this.frame(tt));
   }
   update(dt, t) {
+    this.dt = dt;
+    if (!this.frozen) this.bodyYaw = this.yaw;
     const me = this.myP(); if (!me) return;
     // 내 이동
     this.moving = false;
@@ -509,143 +588,90 @@ export class Game {
     this.spec = pool[(i + d + pool.length) % pool.length].id;
   }
 
-  // 카메라: 엄마 = 1인칭, 장난감 = 등 뒤 3인칭
-  camPos() {
-    const me = this.myP(); if (!me) return { x: 1.5, z: 1.5, eye: .5 };
-    let tgt = me, yaw = this.yaw;
-    if (this.isSpec()) { const s = this.P.get(this.spec); if (s) tgt = s; }
-    if (this.role === 'mom' && !this.isSpec()) return { x: me.x, z: me.z, eye: .62 };
-    // 등 뒤로 벽에 안 박히게
-    const back = tgt.role === 'mom' ? 1.8 : 1.5 + (tgt.form ? OBJ[tgt.form].h : TOY_H) * 1.4;
-    let d = .05; const c = Math.cos(yaw), s = Math.sin(yaw);
-    while (d < back && !solid(this.M, tgt.x - c * (d + .18), tgt.z - s * (d + .18)) && !solid(this.M, tgt.x - c * d + s * .12, tgt.z - s * d - c * .12) && !solid(this.M, tgt.x - c * d - s * .12, tgt.z - s * d + c * .12)) d += .05;
-    const eye = tgt.role === 'mom' ? .8 : clamp((tgt.form ? OBJ[tgt.form].h : TOY_H) + .32, .45, .85);
-    return { x: tgt.x - c * d, z: tgt.z - s * d, eye };
+  // 카메라: 엄마 = 1인칭, 장난감 = 몸 주위를 도는 3인칭
+  camPos() { return this.camP || (this.myP() ? { x: this.myP().x, z: this.myP().z } : { x: 1.5, z: 1.5 }); }
+  placeCamera() {
+    const me = this.myP(); if (!me) return;
+    const cam = this.cam, yaw = this.yaw, pitch = this.pitch;
+    let tgt = me; if (this.isSpec()) { const s = this.P.get(this.spec); if (s) tgt = s; }
+    if (this.role === 'mom' && !this.isSpec()) {
+      cam.position.set(me.x, MOM_EYE, me.z);
+    } else {
+      const h = tgt.role === 'mom' ? MOM_H : (tgt.form ? objHeight(tgt.form) : ROBOT_H);
+      const ty = tgt.role === 'mom' ? 1.3 : Math.max(.2, h * .7);
+      const want = tgt.role === 'mom' ? 2.6 : 1.2 + h * 1.9;
+      const cp = Math.cos(pitch), fx = cp * Math.cos(yaw), fy = Math.sin(pitch), fz = cp * Math.sin(yaw);
+      // 벽 · 바닥 · 천장에 안 박히게 당긴다
+      let d = .05;
+      while (d < want) { const x = tgt.x - fx * (d + .14), z = tgt.z - fz * (d + .14), y = ty - fy * d; if (solid(this.M, x, z) || y < .06 || y > WALL_H - .06) break; d += .04; }
+      this.camDist = d < this.camDist ? d : this.camDist + (d - this.camDist) * Math.min(1, this.dt * 4);
+      const D = this.camDist; cam.position.set(tgt.x - fx * D, ty - fy * D, tgt.z - fz * D);
+    }
+    cam.rotation.set(pitch, -yaw - Math.PI / 2, 0);
+    if (this.shake > 0) { const k = this.shake * .025; cam.position.x += (Math.random() - .5) * k; cam.position.y += (Math.random() - .5) * k; }
+    this.camP = { x: cam.position.x, z: cam.position.z, y: cam.position.y };
   }
 
   // ───────── 그리기 ─────────
   draw(t) {
-    const W = this.W, H = this.H, u = this.u32, zb = this.zb, M = this.M, f = this.f;
-    const cam = this.camPos();
-    const sh = this.shake > 0 ? this.shake : 0;
-    const yaw = this.yaw + (sh ? (Math.random() - .5) * .03 * sh : 0);
-    const hor = Math.round(H / 2 + this.pitch * H + (sh ? (Math.random() - .5) * 8 * sh : 0));
-    const dX = Math.cos(yaw), dZ = Math.sin(yaw), pX = -dZ * TANF, pZ = dX * TANF;
-    const th = this.th, bright = this.ST.bright * (th.dim ? .92 : 1), fog = th.fog;
-    const eye = cam.eye;
-    const shade = (col, k) => { // k: 밝기
-      k *= bright; if (k > 1.2) k = 1.2;
-      const R = Math.min(255, (col & 255) * k), G = Math.min(255, (col >> 8 & 255) * k), B = Math.min(255, (col >> 16 & 255) * k);
-      return 0xff000000 | (B << 16) | (G << 8) | R;
-    };
-    const fogK = d => { const k = th.dim ? 1 - d / 11 : 1 - d / 22; return k < .25 ? .25 : k; };
-    // 바닥 · 천장
-    const ft = th.floor, ftd = ft.d, ceil = this.ceilRGB;
-    for (let y = 0; y < H; y++) {
-      const row = y * W;
-      if (y > hor) {
-        const rd = f * eye / (y - hor + .5);
-        const k = fogK(rd) * (th.dim ? .85 : .95);
-        let fx = cam.x + (dX - pX) * rd, fz = cam.z + (dZ - pZ) * rd;
-        const sx = (pX * 2 * rd) / W, sz = (pZ * 2 * rd) / W;
-        for (let x = 0; x < W; x++) {
-          const tx = ((fx - Math.floor(fx)) * ft.w) | 0, ty = ((fz - Math.floor(fz)) * ft.h) | 0;
-          u[row + x] = shade(ftd[ty * ft.w + tx], k); fx += sx; fz += sz;
-        }
-      } else {
-        const rd = f * (1 - eye) / (hor - y + .5), k = fogK(rd) * (th.dim ? .7 : 1) * bright;
-        const R = Math.min(255, ceil[0] * k) | 0, G = Math.min(255, ceil[1] * k) | 0, B = Math.min(255, ceil[2] * k) | 0, c = 0xff000000 | (B << 16) | (G << 8) | R;
-        u.fill(c, row, row + W);
-      }
-    }
-    // 벽
-    const wt = th.wall, wtd = wt.d;
-    for (let x = 0; x < W; x++) {
-      const cx = 2 * x / W - 1, rx = dX + pX * cx, rz = dZ + pZ * cx;
-      let mx = Math.floor(cam.x), mz = Math.floor(cam.z);
-      const ddx = Math.abs(1 / rx), ddz = Math.abs(1 / rz);
-      let stx, stz, sdx, sdz, side = 0;
-      if (rx < 0) { stx = -1; sdx = (cam.x - mx) * ddx; } else { stx = 1; sdx = (mx + 1 - cam.x) * ddx; }
-      if (rz < 0) { stz = -1; sdz = (cam.z - mz) * ddz; } else { stz = 1; sdz = (mz + 1 - cam.z) * ddz; }
-      let hit = false, n = 0;
-      while (!hit && n++ < 64) { if (sdx < sdz) { sdx += ddx; mx += stx; side = 0; } else { sdz += ddz; mz += stz; side = 1; } if (solid(M, mx + .5, mz + .5)) hit = true; }
-      const pd = side === 0 ? sdx - ddx : sdz - ddz, d = Math.max(.05, pd);
-      zb[x] = d;
-      let wx = side === 0 ? cam.z + d * rz : cam.x + d * rx; wx -= Math.floor(wx);
-      let tx = (wx * wt.w) | 0; if ((side === 0 && rx > 0) || (side === 1 && rz < 0)) tx = wt.w - 1 - tx;
-      const top = hor - f * (1 - eye) / d, bot = hor + f * eye / d, hh = bot - top;
-      const y0 = Math.max(0, Math.ceil(top)), y1 = Math.min(H - 1, Math.floor(bot));
-      const k = fogK(d) * (side ? .82 : 1);
-      for (let y = y0; y <= y1; y++) { const ty = (((y - top) / hh) * wt.h) | 0; u[y * W + x] = shade(wtd[(ty < 0 ? 0 : ty >= wt.h ? wt.h - 1 : ty) * wt.w + tx], k); }
-    }
-    // 스프라이트
-    const spr = [];
-    const add = (x, z, h, w, tex, ref, lift = 0, tint = 0) => { const sx = x - cam.x, sz = z - cam.z, dep = sx * dX + sz * dZ; if (dep < .12) return; spr.push({ x, z, h, w, tex, ref, dep, lift, tint, lat: (sx * pX + sz * pZ) / (TANF * TANF) }); };
-    this.Wd.objs.forEach((o, i) => { const h = OBJ[o.t].h; add(o.x, o.z, h, h, this.objTex[o.t], { k: 'o', i }); });
-    for (const d of this.Wd.decor) { const tx = this.decTex[d.t], h = DECOR[d.t].h; add(d.x, d.z, h, h * tx.w / tx.h, tx, { k: 'd' }); }
-    const anyCaught = [...this.P.values()].some(p => p.caught && !p.gone);
-    add(M.box[0], M.box[1], .55, .55 * 40 / 32, this.boxTex[anyCaught ? 1 : 0], { k: 'b' });
+    if (!this.world) return;
     const tt = t / 1000;
+    this.placeCamera();
+    const anyCaught = [...this.P.values()].some(p => p.caught && !p.gone);
+    const lid = this.toyBox.userData.lid; lid.rotation.x += ((anyCaught ? -1.2 : 0) - lid.rotation.x) * Math.min(1, this.dt * 6);
+    const cx = this.camP.x, cz = this.camP.z;
     for (const p of this.P.values()) {
-      if (p.caught || p.gone) continue;
-      if (this.practice && p.id === this.me && this.pracMom) { const b = this.pracBody; if (b && b.form) { const h = OBJ[b.form].h; add(b.x, b.z, h, h, this.objTex[b.form], { k: 'p', id: 'me' }); } else if (b) add(b.x, b.z, TOY_H, TOY_H, spriteTex(toySprite(p.col)), { k: 'p', id: 'me' }); continue; }
-      if (p.id === this.me && this.role === 'mom') continue; // 1인칭
-      const fz = p.id === this.me ? this.frozen : !!(p.fl & 1), mv = p.id === this.me ? this.moving : !!(p.fl & 2);
-      if (p.role === 'mom') { if (!p.lookTex) this.setLook(p.id, p.look); const bob = mv ? Math.abs(Math.sin(tt * 9)) * .03 : 0; add(p.x, p.z, MOM_H, MOM_W, p.lookTex, { k: 'm', id: p.id }, bob, (p.fl & 16) ? 1 : 0); continue; }
-      const grace = (p.fl & 8) && Math.sin(tt * 20) > 0;
-      if (p.form) {
-        const h = OBJ[p.form].h;
-        // 얼음 아니면 살짝 흔들흔들, 움직이면 통통
-        const wob = fz ? 0 : Math.sin(tt * 5 + p.x * 3) * .022 * (1 + h);
-        const lift = mv ? Math.abs(Math.sin(tt * 12)) * .05 : 0;
-        add(p.x + wob * -dZ, p.z + wob * dX, h, h, this.objTex[p.form], { k: 'p', id: p.id }, lift, grace ? 2 : 0);
+      const o = this.playerObj(p);
+      const self = p.id === this.me;
+      let vis = !p.caught && !p.gone && !(self && this.role === 'mom' && !this.isSpec());
+      if (vis && (p.fl & 8) && Math.sin(tt * 20) < 0) vis = false;
+      o.visible = vis; if (!vis) continue;
+      const fz = self ? this.frozen : !!(p.fl & 1), mv = self ? this.moving : !!(p.fl & 2);
+      if (p.role === 'mom') {
+        o.position.set(p.x, mv ? Math.abs(Math.sin(tt * 9)) * .04 : 0, p.z);
+        o.rotation.set(0, Math.atan2(cx - p.x, cz - p.z), 0); // 좌우로만 돌아 나를 본다 (항상 바닥에 수직)
+        o.userData.plane.material.color.setHex((p.fl & 16) ? 0x9fb4ff : 0xffffff);
       } else {
-        if (!p.toyTex) p.toyTex = spriteTex(toySprite(p.col));
-        add(p.x, p.z, TOY_H, TOY_H, p.toyTex, { k: 'p', id: p.id }, mv ? Math.abs(Math.sin(tt * 12)) * .05 : 0, grace ? 2 : 0);
+        const a = self ? this.bodyYaw : p.a;
+        o.position.set(p.x, mv ? Math.abs(Math.sin(tt * 12)) * .06 : 0, p.z);
+        o.rotation.set(0, Math.PI / 2 - a, fz ? 0 : Math.sin(tt * 5 + p.x * 3) * .07);
       }
     }
-    spr.sort((a, b) => b.dep - a.dep);
-    const cxs = W >> 1, cys = H >> 1, hits = [];
-    for (const s of spr) {
-      const sxc = (W / 2) * (1 + s.lat / s.dep), sh2 = f * s.h / s.dep, sw = f * s.w / s.dep;
-      const bot = hor + f * (eye - s.lift) / s.dep, top = bot - sh2;
-      const x0 = Math.max(0, Math.ceil(sxc - sw / 2)), x1 = Math.min(W - 1, Math.floor(sxc + sw / 2));
-      const y0 = Math.max(0, Math.ceil(top)), y1 = Math.min(H - 1, Math.floor(bot));
-      if (x0 > x1 || y0 > y1) continue;
-      const T = s.tex, td = T.d, k = fogK(s.dep);
-      for (let x = x0; x <= x1; x++) {
-        if (s.dep >= zb[x]) continue;
-        const tx = (((x - (sxc - sw / 2)) / sw) * T.w) | 0; if (tx < 0 || tx >= T.w) continue;
-        for (let y = y0; y <= y1; y++) {
-          const ty = (((y - top) / sh2) * T.h) | 0; if (ty < 0 || ty >= T.h) continue;
-          const c = td[ty * T.w + tx]; if ((c >>> 24) < 128) continue;
-          let o = shade(c, k);
-          if (s.tint === 1) o = (o & 0xff00ffff) | 0x00200000; // 쉬는 엄마 살짝 파랗게 (지친 표시)
-          if (s.tint === 2) o = 0xffffffff;
-          u[y * W + x] = o;
-          if (x === cxs && y === cys) hits.push({ ...s.ref, d: Math.hypot(s.x - this.myP().x, s.z - this.myP().z), dep: s.dep });
-        }
-      }
-      s.sx = sxc; s.sy = top; s.sb = bot;
+    this.R.render(this.scene, this.cam);
+    this.doPick();
+    this.drawHUD(this.camP, t);
+  }
+  // 화면 가운데에 있는 것
+  doPick() {
+    const me = this.myP(); if (!me) return;
+    this.ray.setFromCamera(this.v0 || (this.v0 = new THREE.Vector2(0, 0)), this.cam);
+    const tg = [this.wallMesh, ...this.proxies];
+    for (const p of this.P.values()) if (p.obj && p.obj.visible && p.id !== this.me) tg.push(p.obj);
+    const hits = this.ray.intersectObjects(tg, true), out = [];
+    for (const h of hits) {
+      let o = h.object; while (o && !o.userData.k) o = o.parent; if (!o) continue;
+      const u = o.userData;
+      if (out.length && out[out.length - 1].ref === o) continue;
+      let x, z;
+      if (u.k === 'o') { const ob = this.Wd.objs[u.i]; x = ob.x; z = ob.z; }
+      else if (u.k === 'p') { const pp = this.P.get(u.id); x = pp.x; z = pp.z; }
+      else { x = h.point.x; z = h.point.z; }
+      out.push({ k: u.k, i: u.i, id: u.id, ref: o, dist: h.distance, d: Math.hypot(x - me.x, z - me.z) });
     }
-    // 가장 가까운 것. 단, 장난감이 물건과 거의 겹쳐 있으면 장난감 쪽 (물건 속에 파묻혀 못 잡는 일 방지)
-    let pick = hits.length ? hits[hits.length - 1] : null;
-    if (pick && pick.k !== 'p') { const ph = hits.filter(h => h.k === 'p' && h.dep - pick.dep < .35).pop(); if (ph) pick = ph; }
-    this.pick = pick; this.sprs = spr;
-    this.og.putImageData(this.img, 0, 0);
-    // 화면에 크게
-    const g = this.g, CW = this.cv.width, CH = this.cv.height;
-    g.imageSmoothingEnabled = false; g.drawImage(this.off, 0, 0, CW, CH);
-    this.drawHUD(cam, hor, dX, dZ, pX, pZ, t);
+    let pick = out[0] || null;
+    // 장난감이 물건과 거의 겹쳐 있으면 장난감 쪽 (물건 속에 파묻혀 못 잡는 일 방지)
+    if (pick && pick.k !== 'p') { const ph = out.find(h => h.k === 'p' && h.dist - pick.dist < .35); if (ph) pick = ph; }
+    if (pick && pick.k === 'w') pick = null;
+    this.pick = pick;
   }
 
-  // 월드 좌표 → 화면 (큰 캔버스 좌표)
-  proj(cam, x, z, y, hor, dX, dZ, pX, pZ) {
-    const sx = x - cam.x, sz = z - cam.z, dep = sx * dX + sz * dZ; if (dep < .15) return null;
-    const lat = (sx * pX + sz * pZ) / (TANF * TANF);
-    const X = (this.W / 2) * (1 + lat / dep), Y = hor + this.f * (cam.eye - y) / dep;
-    const k = this.cv.width / this.W;
-    return [X * k, Y * k, dep];
+  // 월드 좌표 → HUD 캔버스 좌표
+  proj(x, z, y) {
+    const v = this.v3 || (this.v3 = new THREE.Vector3());
+    v.set(x, y, z);
+    const d = v.distanceTo(this.cam.position);
+    v.project(this.cam); if (v.z > 1 || v.z < -1) return null;
+    return [(v.x + 1) / 2 * this.hc.width, (1 - v.y) / 2 * this.hc.height, d];
   }
 
   // ───────── HUD ─────────
@@ -735,26 +761,27 @@ export class Game {
     m.querySelector('[data-a=quit]').onclick = () => { if (this.practice || confirm('정말 나갈까요? 게임 중에 나가면 다시 못 들어와요.')) { close(); this.onQuit(); } };
   }
 
-  drawHUD(cam, hor, dX, dZ, pX, pZ, t) {
-    const g = this.g, CW = this.cv.width, CH = this.cv.height, k = this.cv.width / this.W, sc = Math.min(CW, CH) / 600;
+  drawHUD(cam, t) {
+    const g = this.g, CW = this.hc.width, CH = this.hc.height, sc = Math.min(CW, CH) / 600 / this.dpr;
+    g.clearRect(0, 0, CW, CH);
     const me = this.myP();
     // 이름표 (장난감끼리만 서로 보임) · 삑 말풍선 · 손짓 · 효과
     g.textAlign = 'center'; g.textBaseline = 'middle';
     if (this.role === 'toy' || this.ended) for (const p of this.P.values()) {
       if (p.id === this.me || p.caught || p.gone || p.role !== 'toy') continue;
-      const h = p.form ? OBJ[p.form].h : TOY_H, s = this.proj(cam, p.x, p.z, h + .12, hor, dX, dZ, pX, pZ); if (!s || s[2] > 9 || !this.visible(cam, p.x, p.z)) continue;
+      const h = p.form ? objHeight(p.form) : ROBOT_H, s = this.proj(p.x, p.z, h + .12); if (!s || s[2] > 9 || !this.visible(cam, p.x, p.z)) continue;
       g.font = `${Math.round(13 * sc * this.dpr)}px Jua`; g.fillStyle = 'rgba(0,0,0,.5)'; const w = g.measureText(p.name).width + 10 * sc;
       g.fillRect(s[0] - w / 2, s[1] - 10 * sc, w, 20 * sc); g.fillStyle = '#fff'; g.fillText(p.name, s[0], s[1]);
     }
     for (const b of this.bubbles) {
-      const p = this.P.get(b.id); const x = p && !p.caught ? p.x : b.x, z = p && !p.caught ? p.z : b.z, h = p && p.form ? OBJ[p.form].h : TOY_H;
+      const p = this.P.get(b.id); const x = p && !p.caught ? p.x : b.x, z = p && !p.caught ? p.z : b.z, h = p && p.form ? objHeight(p.form) : ROBOT_H;
       if (!this.visible(cam, x, z)) continue;
-      const s = this.proj(cam, x, z, h + .2 + b.t * .25, hor, dX, dZ, pX, pZ); if (!s) continue;
+      const s = this.proj(x, z, h + .2 + b.t * .25); if (!s) continue;
       const a = 1 - b.t / 1.4, sz = clamp(26 / s[2], 12, 40) * sc * this.dpr;
       g.globalAlpha = a; g.font = `${Math.round(sz)}px Jua`; g.lineWidth = sz / 5; g.strokeStyle = '#4a2c1d'; g.strokeText('삑!', s[0], s[1]); g.fillStyle = '#ffd34d'; g.fillText('삑!', s[0], s[1]); g.globalAlpha = 1;
     }
     for (const p of this.pings) {
-      const s = this.proj(cam, p.x, p.z, .3, hor, dX, dZ, pX, pZ); const a = p.t < 3 ? 1 : 4 - p.t;
+      const s = this.proj(p.x, p.z, .3); const a = p.t < 3 ? 1 : 4 - p.t;
       g.globalAlpha = a;
       if (s) { const r = (10 + Math.sin(p.t * 8) * 3) * sc * this.dpr; g.fillStyle = '#5fd0b5'; g.strokeStyle = '#fff'; g.lineWidth = 3; g.beginPath(); g.arc(s[0], s[1], r, 0, TAU); g.fill(); g.stroke(); g.font = `${Math.round(13 * sc * this.dpr)}px Jua`; g.fillStyle = '#fff'; g.fillText(`👋 ${p.who} ${s[2].toFixed(0)}m`, s[0], s[1] - r - 10 * sc); }
       else { // 화면 밖 → 가장자리 화살표
@@ -765,7 +792,7 @@ export class Game {
     for (const e of this.fx) {
       if (e.k === 'poof') { g.globalAlpha = 1 - e.t / 1.2; g.fillStyle = '#fff'; for (let i = 0; i < 8; i++) { const a = i / 8 * TAU, r = (40 + e.t * 140) * sc * this.dpr; g.beginPath(); g.arc(CW / 2 + Math.cos(a) * r, CH * .62 + Math.sin(a) * r * .5, Math.max(.1, 14 * sc * this.dpr * (1 - e.t)), 0, TAU); g.fill(); } g.globalAlpha = 1; }
       else if (e.k === 'vac' || e.k === 'grab' || e.k === 'miss') {
-        const s = this.proj(cam, e.x, e.z, .3, hor, dX, dZ, pX, pZ); if (!s) continue;
+        const s = this.proj(e.x, e.z, .3); if (!s) continue;
         g.globalAlpha = 1 - e.t / 1.2;
         if (e.k === 'vac') { g.strokeStyle = '#7cc4ff'; g.lineWidth = 4 * sc; for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(s[0], s[1], ((e.t * 3 + i * .35) % 1.2) * 260 / s[2] * sc, 0, TAU); g.stroke(); } }
         else { g.font = `${Math.round(30 * sc * this.dpr)}px Jua`; g.fillStyle = e.k === 'grab' ? '#ff6fa5' : '#fff'; g.strokeStyle = '#4a2c1d'; g.lineWidth = 5; const tx = e.k === 'grab' ? '쏙!' : '휙~'; g.strokeText(tx, s[0], s[1] - e.t * 40); g.fillText(tx, s[0], s[1] - e.t * 40); }
@@ -774,14 +801,14 @@ export class Game {
     }
     // 장난감 상자 위 숫자
     const nC = [...this.P.values()].filter(p => p.caught && !p.gone).length;
-    if (nC && this.visible(cam, this.M.box[0], this.M.box[1])) { const s = this.proj(cam, this.M.box[0], this.M.box[1], .8, hor, dX, dZ, pX, pZ); if (s) { g.font = `${Math.round(16 * sc * this.dpr)}px Jua`; g.fillStyle = '#fff'; g.strokeStyle = '#4a2c1d'; g.lineWidth = 4; const tx = `🧸 ×${nC} 갇힘`; g.strokeText(tx, s[0], s[1]); g.fillText(tx, s[0], s[1]); } }
+    if (nC && this.visible(cam, this.M.box[0], this.M.box[1])) { const s = this.proj(this.M.box[0], this.M.box[1], .8); if (s) { g.font = `${Math.round(16 * sc * this.dpr)}px Jua`; g.fillStyle = '#fff'; g.strokeStyle = '#4a2c1d'; g.lineWidth = 4; const tx = `🧸 ×${nC} 갇힘`; g.strokeText(tx, s[0], s[1]); g.fillText(tx, s[0], s[1]); } }
     // 변신 대상 표시
     let prompt = '';
     if (this.role === 'toy' && !this.isSpec() && !this.ended) {
       if (this.nearBox()) prompt = isPhone ? '🆘 버튼 꾹: 친구 구출' : '🆘 E 꾹: 친구들 구출';
       else {
         const i = this.formTarget();
-        if (i >= 0) { const o = this.Wd.objs[i]; const s = this.proj(cam, o.x, o.z, OBJ[o.t].h + .15, hor, dX, dZ, pX, pZ); if (s) { g.font = `${Math.round(20 * sc * this.dpr)}px Jua`; g.fillStyle = '#ff6fa5'; g.strokeStyle = '#fff'; g.lineWidth = 4; const yy = s[1] - Math.abs(Math.sin(t / 200)) * 8 * sc; g.strokeText('▼', s[0], yy); g.fillText('▼', s[0], yy); } prompt = `${isPhone ? '🎭' : 'E'}: ${OBJ[o.t].n}(으)로 변신`; }
+        if (i >= 0) { const o = this.Wd.objs[i]; const s = this.proj(o.x, o.z, objHeight(o.t) + .15); if (s) { g.font = `${Math.round(20 * sc * this.dpr)}px Jua`; g.fillStyle = '#ff6fa5'; g.strokeStyle = '#fff'; g.lineWidth = 4; const yy = s[1] - Math.abs(Math.sin(t / 200)) * 8 * sc; g.strokeText('▼', s[0], yy); g.fillText('▼', s[0], yy); } prompt = `${isPhone ? '🎭' : 'E'}: ${OBJ[o.t].n}(으)로 변신`; }
       }
     }
     // 구출 진행
@@ -908,6 +935,7 @@ export class Game {
     document.removeEventListener('pointerlockchange', this.plc);
     if (document.pointerLockElement) document.exitPointerLock();
     this.closeEditor();
+    try { this.R.dispose(); this.R.forceContextLoss(); } catch (e) {}
     this.root.textContent = '';
   }
 }

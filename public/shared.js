@@ -1,5 +1,5 @@
 // 엄마의 대청소날~ — 서버·화면 공용 (맵, 물건, 규칙 숫자)
-export const PROTO = 1;
+export const PROTO = 2;
 
 export const CFG = {
   MAX_PLAYERS: 10,
@@ -52,18 +52,19 @@ export const OBJ = {
   fan:     { n: '선풍기', s: 'l', h: .85 },
   tv:      { n: '옛날TV', s: 'l', h: .6 }
 };
-// 숨을 수 없는 큰 가구 (부딪힘)
+// 숨을 수 없는 큰 가구 (부딪힘). w = 가로, d = 깊이 (칸), snap = 가까운 벽에 등을 붙인다
 export const DECOR = {
-  bed:      { n: '침대', h: 1, r: .5 },
-  shelf:    { n: '책장', h: 1.2, r: .42 },
-  fridge:   { n: '냉장고', h: 1.3, r: .42 },
-  table:    { n: '식탁', h: .75, r: .5 },
-  sofa:     { n: '소파', h: .8, r: .5 },
-  washer:   { n: '세탁기', h: .9, r: .42 },
-  wardrobe: { n: '옷장', h: 1.3, r: .45 },
-  tub:      { n: '욕조', h: .6, r: .5 },
-  beam:     { n: '기둥', h: 1.4, r: .25 }
+  bed:      { n: '침대', w: 1.0, d: 1.9, snap: 1 },
+  shelf:    { n: '책장', w: .9, d: .35, snap: 1 },
+  fridge:   { n: '냉장고', w: .72, d: .7, snap: 1 },
+  table:    { n: '식탁', w: 1.2, d: .8 },
+  sofa:     { n: '소파', w: 1.6, d: .8, snap: 1 },
+  washer:   { n: '세탁기', w: .66, d: .66, snap: 1 },
+  wardrobe: { n: '옷장', w: 1.1, d: .6, snap: 1 },
+  tub:      { n: '욕조', w: 1.6, d: .8, snap: 1 },
+  beam:     { n: '기둥', w: .3, d: .3 }
 };
+export const WALL_H = 2.2;
 
 // '#' 벽 · '.' 바닥 · '+' 문(바닥, 물건 안 놓임)
 export const MAPS = {
@@ -162,11 +163,11 @@ export function genWorld(mapId, seed) {
   const types = []; for (const [k, n] of Object.entries(M.objs)) for (let i = 0; i < n; i++) types.push(k);
   const objs = [];
   const far = (x, z, d) => Math.hypot(x - M.box[0], z - M.box[1]) > d && Math.hypot(x - M.mom[0], z - M.mom[1]) > 1.2 && Math.hypot(x - M.toy[0], z - M.toy[1]) > 1.2;
-  const dec = M.decor.map(([t, x, z]) => ({ t, x, z, r: DECOR[t].r }));
+  const dec = M.decor.map(([t, x, z]) => placeDecor(M, t, x, z));
   const ok = (x, z, r) => {
     for (const [dx, dz] of [[r, 0], [-r, 0], [0, r], [0, -r]]) if (solid(M, x + dx, z + dz)) return false;
     if (M.grid[Math.floor(z)][Math.floor(x)] === '+') return false;
-    for (const d of dec) if (Math.hypot(x - d.x, z - d.z) < d.r + .3) return false;
+    for (const d of dec) if (Math.abs(x - d.x) < d.hw + .3 && Math.abs(z - d.z) < d.hd + .3) return false;
     for (const o of objs) if (Math.hypot(x - o.x, z - o.z) < .75) return false;
     return far(x, z, 1.6);
   };
@@ -184,6 +185,26 @@ export function genWorld(mapId, seed) {
   return { M, W, H, objs, decor: dec };
 }
 
+// 가장 가까운 벽(1.2칸 안)에 등을 붙인다. rot: 모델의 등(-z)이 벽을 보게 하는 Y 회전
+export function placeDecor(M, t, x, z) {
+  const D = DECOR[t];
+  const out = { t, x, z, rot: 0, hw: D.w / 2, hd: D.d / 2 };
+  if (!D.snap) return out;
+  let best = null;
+  for (const [dx, dz, rot] of [[0, -1, 0], [0, 1, Math.PI], [-1, 0, Math.PI / 2], [1, 0, -Math.PI / 2]]) {
+    let t2 = 0; while (t2 < 1.4 && !solid(M, x + dx * t2, z + dz * t2)) t2 += .02;
+    if (t2 < 1.4 && (!best || t2 < best.t)) best = { t: t2, dx, dz, rot };
+  }
+  if (!best) return out;
+  const side = best.dx ? D.w : D.d; // 회전 후 벽 쪽 두께 = 깊이
+  const half = D.d / 2;
+  out.rot = best.rot;
+  if (best.dx) { out.hw = D.d / 2; out.hd = D.w / 2; out.x = Math.round((x + best.dx * best.t - best.dx * (half + .02)) * 100) / 100; }
+  else { out.z = Math.round((z + best.dz * best.t - best.dz * (half + .02)) * 100) / 100; }
+  void side;
+  return out;
+}
+
 export function roomName(M, x, z) {
   for (const [x0, z0, x1, z1, n] of M.rooms) if (x >= x0 && x < x1 + 1 && z >= z0 && z < z1 + 1) return n;
   return '어딘가';
@@ -194,7 +215,7 @@ export function collide(W, x, z, nx, nz, r = CFG.RADIUS) {
   const M = W.M;
   const free = (px, pz) => {
     if (solid(M, px - r, pz - r) || solid(M, px + r, pz - r) || solid(M, px - r, pz + r) || solid(M, px + r, pz + r)) return false;
-    for (const d of W.decor) if (Math.hypot(px - d.x, pz - d.z) < d.r + r * .6) return false;
+    for (const d of W.decor) if (Math.abs(px - d.x) < d.hw + r && Math.abs(pz - d.z) < d.hd + r) return false;
     return true;
   };
   let rx = x, rz = z;

@@ -1,294 +1,324 @@
-// 엄마의 대청소날~ — 서버·화면 공용 (맵, 물건, 규칙 숫자)
-export const PROTO = 5;
+// 엄마의 대청소날~ — 서버·화면 공용 (집 지도, 충돌, 게임 규칙)
+// 쥐 탈출 버전: 쥐는 열쇠 3개를 찾아 현관문에 꽂고 탈출, 엄마는 막는다.
+export const PROTO = 6;
 // 밸런스 버전: 규칙 숫자(시간·속도·쿨 등)를 바꾸면 +1 → 통계 페이지에서 버전별로 나눠 볼 수 있음
-export const BAL = 3;
+export const BAL = 10;
 
 export const CFG = {
   MAX_PLAYERS: 10,
-  PREP: 30,          // 준비 (엄마 단장 + 장난감 숨기)
-  HUNT: 240,         // 청소 4분
-  GRAB_RANGE: 2.4,   // 엄마 손 닿는 거리 (칸)
+  PREP: 30,          // 준비 (엄마 단장 + 쥐 흩어지기)
+  HUNT: 240,         // 4분
+  GRAB_REACH: 1.9,   // 엄마 눈 → 쥐 거리 (3D)
+  OPEN_REACH: 2.1,   // 엄마 눈 → 숨는 곳 문 거리
   STAMINA: 5,        // 헛손질 가능 횟수
   STAM_REGEN: 8,     // 몇 초마다 1 회복
   REST: 3,           // 기진맥진 쉬는 시간
   VAC_CD: 60,        // 청소기 쿨타임
-  VAC_R: 4.5,        // 청소기 범위
-  SQUEAK: 30,        // 삑! 주기
-  RESCUE: 3,         // 상자 구출 꾹 누르기
-  RESCUE_R: 1.4,
-  FORM_CD: 2,        // 변신 쿨타임
-  FORM_R: 2.2,       // 변신 가능한 거리
+  VAC_R: 3,          // 청소기 범위
+  RESCUE: 3,         // 쥐장 구출 꾹 누르기
+  RESCUE_R: .9,
   GRACE: 3,          // 구출 직후 무적
-  RADIUS: 0.22,
-  SPEED: { mom: 3.2, toy: 3.6, s: 3.9, m: 3.2, l: 2.5, xl: 2.2 },
-  MOM_OFF_SWAP: 30,  // 엄마가 이만큼 끊겨 있으면 장난감 하나가 엄마가 된다
+  HIDE_SQ: 15,       // 숨는 곳에 이만큼 있으면 찍찍!
+  HIDE_SQ_EVERY: 5,  // 그 뒤로 몇 초마다
+  HOLE_BLOCK: 20,    // 쥐구멍 한 번 쓰면 먼지로 막히는 시간
+  KEYS: 3,
+  SPEED: { mom: 3.4, mouse: 4.0, mouseKey: 3.0 },
+  MOUSE: { r: .06, h: .11, step: .05, jump: .55 },
+  MOM: { r: .25, h: 1.7, step: .26, eye: 1.45 },
+  G: 14,
+  MOM_OFF_SWAP: 30,  // 엄마가 이만큼 끊겨 있으면 쥐 하나가 엄마가 된다
   LOOK_W: 32, LOOK_H: 56
 };
-
-// 숨을 수 있는 물건. s 작은 거(빠름) · m 중간 · l 큰 거(느림). h = 세계 높이(벽 = 1)
-export const OBJ = {
-  sock:    { n: '양말', s: 's', h: .2 },
-  cup:     { n: '컵', s: 's', h: .2 },
-  book:    { n: '책', s: 's', h: .2 },
-  ball:    { n: '공', s: 's', h: .22 },
-  block:   { n: '블록', s: 's', h: .2 },
-  apple:   { n: '사과', s: 's', h: .18 },
-  milk:    { n: '우유팩', s: 's', h: .24 },
-  slipper: { n: '슬리퍼', s: 's', h: .18 },
-  roll:    { n: '휴지', s: 's', h: .2 },
-  duck:    { n: '고무오리', s: 's', h: .2 },
-  cushion: { n: '쿠션', s: 'm', h: .38 },
-  bin:     { n: '휴지통', s: 'm', h: .42 },
-  plant:   { n: '화분', s: 'm', h: .48 },
-  pot:     { n: '냄비', s: 'm', h: .36 },
-  kettle:  { n: '주전자', s: 'm', h: .4 },
-  box:     { n: '상자', s: 'm', h: .42 },
-  cooker:  { n: '밥솥', s: 'm', h: .4 },
-  bucket:  { n: '양동이', s: 'm', h: .4 },
-  radio:   { n: '라디오', s: 'm', h: .36 },
-  basket:  { n: '빨래바구니', s: 'l', h: .62 },
-  chair:   { n: '의자', s: 'l', h: .8 },
-  lamp:    { n: '스탠드', s: 'l', h: .9 },
-  rice:    { n: '쌀포대', s: 'l', h: .6 },
-  trunk:   { n: '트렁크', s: 'l', h: .62 },
-  fan:     { n: '선풍기', s: 'l', h: .85 },
-  tv:      { n: '옛날TV', s: 'l', h: .6 }
-};
-// 숨을 수 없는 큰 가구 (부딪힘). w = 가로, d = 깊이 (칸), snap = 가까운 벽에 등을 붙인다
-// under = 밑 공간 높이: 작은 물건(s)으로 변신한 장난감만 밑으로 들어갈 수 있다 (옆이 뚫려 있어서 다 보임)
-export const DECOR = {
-  bed:      { n: '침대', w: 1.0, d: 1.9, snap: 1, under: .3 },
-  shelf:    { n: '책장', w: .9, d: .35, snap: 1 },
-  fridge:   { n: '냉장고', w: .72, d: .7, snap: 1 },
-  table:    { n: '식탁', w: 1.2, d: .8, under: .68 },
-  cloth:    { n: '식탁보 식탁', w: 1.2, d: .8, under: .5 },
-  sofa:     { n: '소파', w: 1.6, d: .8, snap: 1 },
-  washer:   { n: '세탁기', w: .66, d: .66, snap: 1 },
-  wardrobe: { n: '옷장', w: 1.1, d: .6, snap: 1 },
-  tub:      { n: '욕조', w: 1.6, d: .8, snap: 1 },
-  beam:     { n: '기둥', w: .3, d: .3 },
-  desk:     { n: '책상', w: 1.1, d: .6, snap: 1, under: .65 },
-  toyshelf: { n: '장난감 선반', w: 1.0, d: .4, snap: 1 },
-  dryer:    { n: '빨래 건조대', w: 1.2, d: .5 },
-  blanket:  { n: '이불 더미', w: .9, d: .9 },
-  curtain:  { n: '커튼', w: 1.2, d: .15, snap: 1 },
-  bear:     { n: '큰 곰인형', w: .6, d: .5, snap: 1 },
-  sink:     { n: '싱크대', w: 1.6, d: .6, snap: 1 },
-  shoes:    { n: '신발장', w: 1.0, d: .35, snap: 1 },
-  bigplant: { n: '큰 화분', w: .5, d: .5 },
-  boxpile:  { n: '상자 더미', w: 1.0, d: .8, snap: 1 },
-  tarp:     { n: '천 덮인 짐', w: 1.2, d: 1.0 },
-  chairs:   { n: '쌓인 의자', w: .6, d: .6 },
-  oldsofa:  { n: '낡은 소파', w: 1.5, d: .75, snap: 1 },
-  rack:     { n: '옷걸이 행거', w: 1.2, d: .5, snap: 1 },
-  mirror:   { n: '큰 거울', w: .7, d: .2, snap: 1 }
-};
-export const WALL_H = 2.2;
-
-// '#' 벽 · '.' 바닥 · '+' 문(바닥, 물건 안 놓임)
-export const MAPS = {
-  room: {
-    name: '아이 방', theme: 'room',
-    grid: [
-      '############################',
-      '#..........#.......#.......#',
-      '#..........#.......#.......#',
-      '#..........+.......#.......#',
-      '#..........#.......+.......#',
-      '#..........#.......#.......#',
-      '#####+######.......#####+###',
-      '#..........#####+###.......#',
-      '#..........................#',
-      '#..........................#',
-      '#####+#######+#######+######',
-      '#.......#..........#.......#',
-      '#.......#..........#.......#',
-      '#.......+..........#.......#',
-      '#.......#..........+.......#',
-      '#.......#..........#.......#',
-      '#.......#..........#.......#',
-      '############################'
-    ],
-    rooms: [[1, 1, 10, 5, '아이 방'], [12, 1, 18, 6, '놀이방'], [20, 1, 26, 5, '욕실'], [1, 7, 26, 9, '거실'], [1, 11, 7, 16, '안방'], [9, 11, 18, 16, '공부방'], [20, 11, 26, 16, '옷방']],
-    box: [13.5, 8.5], mom: [3.5, 8.5], toy: [22.5, 8.5],
-    decor: [['bed', 2, 2], ['shelf', 9.6, 1.6], ['tub', 25.4, 1.7], ['sofa', 9, 7.5], ['bed', 2.2, 15.2], ['wardrobe', 6.5, 11.6], ['table', 13.5, 13.5], ['shelf', 17.5, 11.5], ['wardrobe', 25.5, 15.4], ['washer', 21, 1.6],
-      ['desk', 7, 1.4], ['toyshelf', 1.4, 4.5], ['blanket', 4.6, 4.1], ['bear', 9.6, 4.6], ['curtain', 4.5, 1.1],
-      ['toyshelf', 15, 1.3], ['dryer', 14.5, 4.2], ['boxpile', 12.6, 5.5], ['dryer', 23, 4],
-      ['bigplant', 1.5, 9.3], ['shoes', 26.4, 8.5], ['curtain', 21.5, 7.1],
-      ['mirror', 1.1, 11.8], ['curtain', 4.2, 16.9], ['blanket', 5.6, 14.6],
-      ['desk', 10.6, 16.5], ['desk', 15.6, 16.5], ['bigplant', 9.5, 11.5], ['boxpile', 17.5, 15.8],
-      ['rack', 24.5, 11.3], ['rack', 20.6, 15.9], ['mirror', 26.4, 12.5], ['shoes', 23.5, 16.6]],
-    objs: { block: 12, ball: 10, sock: 14, book: 10, duck: 7, roll: 7, cushion: 10, bin: 5, box: 10, plant: 5, basket: 7, chair: 7, lamp: 5, radio: 5, bucket: 5, slipper: 7, cup: 7 }
-  },
-  kitchen: {
-    name: '부엌', theme: 'kitchen',
-    grid: [
-      '##########################',
-      '#.........#..............#',
-      '#.........#..............#',
-      '#.........+..............#',
-      '#.........#..............#',
-      '#####+#####..............#',
-      '#.........######+#########',
-      '#........................#',
-      '#........................#',
-      '#..........#####+######+##',
-      '######+#####......#......#',
-      '#..........#......#......#',
-      '#..........+......+......#',
-      '#..........#......#......#',
-      '##########################'
-    ],
-    rooms: [[1, 1, 9, 4, '다용도실'], [11, 1, 24, 5, '부엌'], [1, 6, 24, 8, '거실'], [1, 11, 10, 13, '식료품 창고'], [12, 10, 17, 13, '식당'], [19, 10, 24, 13, '베란다']],
-    box: [12.5, 7.5], mom: [3.5, 7.5], toy: [21.5, 7.5],
-    decor: [['washer', 1.6, 1.6], ['washer', 2.8, 1.6], ['fridge', 23.5, 1.6], ['cloth', 17, 3.2], ['sofa', 6, 6.7], ['shelf', 1.6, 11.5], ['shelf', 9.5, 11.5], ['table', 14.5, 11.8],
-      ['dryer', 6, 2.6], ['boxpile', 8.6, 1.5], ['shoes', 1.3, 3.9],
-      ['sink', 13, 1.3], ['sink', 20.3, 1.3], ['bigplant', 24.4, 4.6], ['table', 13.5, 4.3],
-      ['bigplant', 1.4, 8.5], ['shoes', 24.4, 7.6], ['bear', 9.5, 9.5], ['curtain', 12.5, 8.9],
-      ['bigplant', 17.4, 10.5], ['boxpile', 5.5, 13.4], ['blanket', 3.2, 12.3],
-      ['dryer', 21.5, 11.5], ['bigplant', 24.4, 13.4], ['boxpile', 20, 13.4]],
-    objs: { cup: 14, apple: 10, milk: 10, pot: 10, kettle: 7, cooker: 5, rice: 7, chair: 10, bin: 5, bucket: 5, roll: 7, box: 10, basket: 5, plant: 5, cushion: 5, sock: 7, slipper: 7 }
-  },
-  attic: {
-    name: '다락방', theme: 'attic',
-    grid: [
-      '##########################',
-      '#............#...........#',
-      '#............#...........#',
-      '#............+...........#',
-      '#............#...........#',
-      '#....#####+###...........#',
-      '#....#.........#####+#####',
-      '#....+.........#.........#',
-      '#....#.........+.........#',
-      '######.........#.........#',
-      '#......................#.#',
-      '#......................+.#',
-      '##########################'
-    ],
-    rooms: [[1, 1, 12, 4, '먼지 구석'], [14, 1, 24, 5, '창고'], [6, 6, 14, 11, '다락 한가운데'], [1, 6, 4, 8, '좁은 틈'], [16, 7, 24, 9, '옛날 짐'], [1, 10, 22, 11, '복도']],
-    box: [10, 8.5], mom: [3, 10.5], toy: [20, 3],
-    decor: [['beam', 4, 3], ['beam', 9, 2.5], ['beam', 18, 3], ['beam', 8.5, 7.5], ['beam', 12.5, 9.8], ['wardrobe', 1.6, 1.6], ['shelf', 24.4, 1.6], ['shelf', 23.6, 7.6],
-      ['tarp', 6.5, 2], ['chairs', 11.5, 1.5], ['mirror', 12.6, 4.4], ['oldsofa', 8, 4.4],
-      ['rack', 16, 1.3], ['tarp', 22, 1.6], ['boxpile', 24.3, 4.5],
-      ['chairs', 1.5, 8.4],
-      ['tarp', 11.6, 7.2], ['oldsofa', 6.6, 9.1],
-      ['tarp', 19.2, 8.1], ['boxpile', 22.6, 7.3],
-      ['rack', 1.3, 10.9], ['chairs', 18, 11.4], ['blanket', 13.5, 11.3]],
-    objs: { trunk: 10, box: 19, fan: 5, lamp: 5, tv: 5, radio: 7, book: 12, basket: 5, chair: 7, bucket: 5, roll: 5, ball: 7, block: 7, sock: 7, plant: 2, cushion: 7 }
-  }
-};
-export const MAP_IDS = Object.keys(MAPS);
+export const JUMP_V = Math.sqrt(2 * CFG.G * CFG.MOUSE.jump);
+export const WALL_H = 2.2;      // 1층 천장
+export const ATTIC_Y = 2.3;     // 다락방 바닥
+export const ATTIC_TOP = 4.0;   // 다락방 지붕
 
 export function rng(seed) {
   let a = seed >>> 0;
   return () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 }
 
-export function solid(M, x, z) {
-  const xi = Math.floor(x), zi = Math.floor(z);
-  const row = M.grid[zi]; if (!row) return true;
-  const c = row[xi]; return c === undefined || c === '#';
+// ───────── 가구 (부품 = 상자·원기둥·공. 등 = -z, 앞 = +z, y0 = 바닥에서 높이) ─────────
+// ['b', x, y0, z, w, h, d, 색, 단단함]  ['c', x, y0, z, 반지름, h, 색, 단단함]  ['s', x, y0, z, rx, ry, rz, 색, 단단함]
+// spots: 숨는 곳 { x, y, z(앞면), w, h, k: 'door' 문 · 'drawer' 서랍 · 'lift' 통째로 들어 올림 }
+const WH = 0xf4f7fa, WOOD = 0xc98a55, BR = 0x8a522c, DK = 0x3a2a22, SV = 0xbfc8d0, GY = 0x9aa6b2, GR = 0x3fbf6a, YL = 0xffd34d, PK = 0xff7fae, BL = 0x5fb8ff, RD = 0xe0503c;
+const legs4 = (x, z, w, h, col, y0 = 0) => [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => ['b', a * x, y0, b * z, w, h, w, col, 1]);
+export const FURN = {
+  fridge: { n: '냉장고', parts: [['b', 0, 0, 0, .75, 1.8, .7, WH, 1], ['b', 0, 1.17, .352, .74, .012, .01, 0xb8c2cc, 0], ['b', .3, 1.28, .365, .04, .3, .03, SV, 0], ['b', .3, .62, .365, .04, .38, .03, SV, 0], ['b', -.18, .95, .356, .08, .08, .01, YL, 0], ['b', -.05, 1.45, .356, .07, .06, .01, PK, 0]] },
+  counter: { n: '싱크대', parts: [['b', 0, 0, 0, 2.4, .86, .6, WH, 1], ['b', 0, .86, 0, 2.4, .05, .6, GY, 1], ['b', -.15, .906, .02, .56, .012, .36, 0x5a6670, 0], ['c', -.15, .91, -.2, .02, .26, SV, 0], ['b', -.15, 1.15, -.13, .03, .03, .16, SV, 0], ['b', .45, .91, .05, .26, .02, .18, WOOD, 0]],
+    spots: [{ x: -.6, y: .06, z: .3, w: .92, h: .72, k: 'door' }, { x: .6, y: .06, z: .3, w: .92, h: .72, k: 'door' }] },
+  upcab: { n: '찬장', parts: [['b', 0, 1.45, 0, 1.6, .55, .35, 0xd9b48a, 1]],
+    spots: [{ x: -.4, y: 1.47, z: .175, w: .76, h: .5, k: 'door' }, { x: .4, y: 1.47, z: .175, w: .76, h: .5, k: 'door' }] },
+  cooker: { n: '밥솥', parts: [['c', 0, 0, 0, .15, .26, WH, 1], ['b', 0, .1, .145, .1, .06, .02, 0x2a3a48, 0], ['c', 0, .02, 0, .152, .03, PK, 0]] },
+  jars: { n: '양념통', parts: [['b', 0, 0, 0, .34, .02, .16, WOOD, 1], ['c', -.11, .02, 0, .05, .2, 0xff9a3c, 1], ['c', 0, .02, 0, .05, .2, 0xffe0b0, 1], ['c', .11, .02, 0, .05, .2, 0x9be15d, 1]] },
+  chair: { n: '의자', parts: [['b', 0, .42, 0, .42, .04, .42, WOOD, 1], ...legs4(.18, .18, .04, .42, BR), ['b', 0, .46, -.19, .4, .45, .04, WOOD, 1]] },
+  table: { n: '식탁', parts: [['b', 0, .7, 0, 1.2, .05, .8, WOOD, 1], ...legs4(.54, .34, .06, .7, BR), ['b', .2, .75, 0, .3, .01, .3, WH, 0], ['c', -.25, .75, .1, .06, .12, BL, 0]] },
+  bed: { n: '침대', parts: [...legs4(.45, .9, .08, .28, BR), ['b', 0, .28, 0, 1, .12, 1.9, WOOD, 1], ['b', 0, .4, 0, .96, .12, 1.86, WH, 1], ['b', 0, .52, .3, .98, .03, 1.25, BL, 0], ['b', 0, .52, -.7, .6, .08, .3, WH, 0], ['b', 0, .28, -.93, 1, .62, .06, BR, 1]] },
+  sofa: { n: '소파', parts: [...legs4(.8, .35, .06, .14, DK), ['b', 0, .14, 0, 1.8, .22, .85, 0x4a9a78, 1], ['b', 0, .36, .06, 1.46, .12, .7, 0x6cc8a0, 1], ['b', 0, .36, -.33, 1.8, .5, .2, 0x4a9a78, 1], ['b', -.82, .36, 0, .16, .2, .85, 0x4a9a78, 1], ['b', .82, .36, 0, .16, .2, .85, 0x4a9a78, 1], ['b', -.4, .48, -.15, .3, .25, .1, YL, 0]] },
+  coffee: { n: '탁자', parts: [['b', 0, .36, 0, .9, .04, .5, WOOD, 1], ...legs4(.4, .2, .05, .36, BR), ['b', .15, .4, 0, .22, .02, .16, RD, 0]] },
+  tvstand: { n: 'TV장', parts: [['b', 0, .06, 0, 1.6, .44, .45, 0xb07a4a, 1], ...legs4(.74, .18, .06, .06, DK), ['b', 0, .5, -.12, .3, .04, .16, DK, 1], ['b', 0, .54, -.12, .05, .14, .05, DK, 1], ['b', 0, .62, -.12, 1.3, .75, .06, 0x2a2a2a, 1], ['b', 0, .66, -.088, 1.22, .67, .005, 0x3a5a7a, 0]],
+    spots: [{ x: -.4, y: .08, z: .225, w: .76, h: .38, k: 'door' }, { x: .4, y: .08, z: .225, w: .76, h: .38, k: 'door' }] },
+  desk: { n: '컴퓨터 책상', parts: [['b', 0, .72, 0, 1.2, .04, .6, WOOD, 1], ['b', -.57, 0, -.27, .05, .72, .05, BR, 1], ['b', -.57, 0, .27, .05, .72, .05, BR, 1], ['b', .38, 0, 0, .42, .72, .58, 0xb07a4a, 1],
+    ['b', -.15, .76, -.2, .64, .4, .04, DK, 1], ['b', -.15, .82, -.177, .58, .32, .005, 0x5fb8ff, 0], ['b', -.15, .76, -.15, .2, .02, .14, DK, 0], ['b', -.1, .76, .1, .44, .02, .14, 0xeeeeee, 0], ['b', -.3, 0, -.08, .2, .46, .4, 0x555555, 1]],
+    spots: [{ x: .38, y: .04, z: .29, w: .38, h: .3, k: 'drawer' }, { x: .38, y: .38, z: .29, w: .38, h: .3, k: 'drawer' }] },
+  ochair: { n: '회전의자', parts: [['b', 0, .02, 0, .5, .04, .08, DK, 0], ['b', 0, .02, 0, .08, .04, .5, DK, 0], ['c', 0, 0, 0, .035, .42, SV, 1], ['b', 0, .42, 0, .46, .06, .46, 0x444444, 1], ['b', 0, .48, -.21, .44, .5, .06, 0x444444, 1]] },
+  chest: { n: '서랍장', parts: [['b', 0, .04, 0, .9, .92, .45, 0xe0b07a, 1], ...legs4(.4, .18, .05, .04, BR), ['c', 0, .96, 0, .08, .02, BR, 0], ['s', 0, .98, 0, .07, .12, .07, PK, 0]],
+    spots: [{ x: 0, y: .07, z: .225, w: .82, h: .26, k: 'drawer' }, { x: 0, y: .37, z: .225, w: .82, h: .26, k: 'drawer' }, { x: 0, y: .67, z: .225, w: .82, h: .26, k: 'drawer' }] },
+  ladder: { n: '사다리 선반', parts: [
+    ['b', 0, .3, -.0, .9, .03, .44, WOOD, 1], ['b', 0, .62, -.05, .9, .03, .34, WOOD, 1], ['b', 0, .94, -.095, .9, .03, .25, WOOD, 1], ['b', 0, 1.26, -.14, .9, .03, .16, WOOD, 1],
+    ['b', -.44, 0, -.2, .03, 1.42, .03, BR, 1], ['b', .44, 0, -.2, .03, 1.42, .03, BR, 1], ['b', -.44, 0, .2, .03, .33, .03, BR, 1], ['b', .44, 0, .2, .03, .33, .03, BR, 1],
+    ['b', -.25, .33, -.1, .3, .2, .22, RD, 1], ['b', .3, .65, -.1, .2, .16, .16, BL, 1], ['s', -.3, .97, -.12, .08, .08, .08, GR, 1], ['b', .25, 1.29, -.15, .2, .12, .1, YL, 0]] },
+  shoecab: { n: '신발장', parts: [['b', 0, .05, 0, 1, .85, .35, 0xd9b48a, 1], ...legs4(.45, .13, .05, .05, BR), ['b', -.2, .9, 0, .1, .07, .24, 0x3b8fd6, 0], ['b', .25, .9, 0, .1, .1, .22, RD, 0]],
+    spots: [{ x: 0, y: .07, z: .175, w: .92, h: .78, k: 'door' }] },
+  bin: { n: '휴지통', parts: [['c', 0, 0, 0, .17, .4, 0x5fb38f, 1], ['c', 0, .4, 0, .19, .03, 0x4a9a78, 1]], lift: 1,
+    spots: [{ x: 0, y: .03, z: .17, w: .34, h: .36, k: 'lift' }] },
+  cbox: { n: '상자', parts: [['b', 0, 0, 0, .44, .34, .38, 0xc9935a, 1], ['b', 0, .34, 0, .07, .005, .39, 0xe8d29a, 0], ['b', 0, 0, .191, .16, .1, .005, 0x3a2216, 0]], lift: 1,
+    spots: [{ x: 0, y: 0, z: .19, w: .4, h: .3, k: 'lift' }] },
+  basket: { n: '빨래바구니', parts: [['c', 0, 0, 0, .25, .36, 0xe0c27a, 1], ['s', -.08, .3, 0, .13, .08, .11, PK, 0], ['s', .09, .31, .05, .13, .07, .1, BL, 0]], lift: 1,
+    spots: [{ x: 0, y: .02, z: .25, w: .44, h: .32, k: 'lift' }] },
+  plant: { n: '화분', parts: [['c', 0, 0, 0, .18, .34, 0xd0703c, 1], ['s', 0, .3, 0, .24, .26, .24, GR, 1], ['s', .12, .55, .05, .14, .16, .14, 0x2fa65a, 0], ['s', -.1, .58, -.05, .14, .16, .14, 0x5fd77f, 0]] },
+  lamp: { n: '스탠드', parts: [['c', 0, 0, 0, .15, .03, 0x4a4a4a, 0], ['c', 0, 0, 0, .025, 1.3, 0x6b6b6b, 1], ['c', 0, 1.22, 0, .22, .3, 0xfff3b0, 1]] },
+  rug: { n: '러그', parts: [['b', 0, 0, 0, 2.2, .006, 1.5, 0xf2a7b8, 0], ['b', 0, .001, 0, 1.9, .006, 1.2, 0xfff0d8, 0]] },
+  kmat: { n: '부엌 바닥', parts: [['b', 0, 0, 0, 6.2, .004, 3.4, 0xeaf3f6, 0]] },
+  // 다락방
+  trunk: { n: '트렁크', parts: [['b', 0, 0, 0, .8, .42, .45, 0x7a4a2a, 1], ['b', 0, .32, 0, .82, .1, .46, 0x8e5a34, 0], ['b', -.25, 0, 0, .05, .43, .46, 0xc9a24a, 0], ['b', .25, 0, 0, .05, .43, .46, 0xc9a24a, 0], ['b', 0, .28, .228, .08, .08, .02, YL, 0]], lift: 1,
+    spots: [{ x: 0, y: .03, z: .225, w: .7, h: .36, k: 'lift' }] },
+  boxpile: { n: '상자 더미', parts: [['b', -.22, 0, -.1, .5, .4, .45, 0xc9935a, 1], ['b', .26, 0, .1, .44, .36, .4, 0xd4a46a, 1], ['b', -.12, .4, -.1, .42, .34, .38, 0xc9935a, 1], ['b', -.15, .74, -.12, .3, .26, .28, 0xe0ad74, 1]] },
+  rocker: { n: '흔들의자', parts: [['b', 0, .4, 0, .48, .05, .46, 0xa0703c, 1], ['b', 0, .45, -.21, .46, .6, .05, 0xa0703c, 1], ['b', -.22, 0, 0, .04, .4, .04, BR, 1], ['b', .22, 0, 0, .04, .4, .04, BR, 1], ['b', -.22, 0, 0, .05, .04, .7, BR, 0], ['b', .22, 0, 0, .05, .04, .7, BR, 0]] },
+  oldshelf: { n: '낡은 선반', parts: [
+    ['b', 0, .3, 0, .9, .03, .44, 0x8a6a4a, 1], ['b', 0, .62, -.05, .9, .03, .34, 0x8a6a4a, 1], ['b', 0, .94, -.095, .9, .03, .25, 0x8a6a4a, 1],
+    ['b', -.44, 0, -.2, .03, 1.1, .03, 0x5e432c, 1], ['b', .44, 0, -.2, .03, 1.1, .03, 0x5e432c, 1], ['b', -.44, 0, .2, .03, .33, .03, 0x5e432c, 1], ['b', .44, 0, .2, .03, .33, .03, 0x5e432c, 1],
+    ['c', -.2, .33, -.05, .07, .14, 0x9aa6b2, 1], ['b', .25, .65, -.1, .25, .12, .18, 0x7a5a3c, 1]] },
+  blanket: { n: '이불 더미', parts: [['s', 0, 0, 0, .42, .14, .4, 0x7cc4ff, 1], ['s', .02, .14, .02, .38, .12, .36, 0xffb3d1, 1], ['s', -.03, .24, -.02, .3, .1, .28, 0xfff6d8, 0]], lift: 1,
+    spots: [{ x: 0, y: 0, z: .38, w: .5, h: .2, k: 'lift' }] },
+  oldlamp: { n: '낡은 램프', parts: [['c', 0, 0, 0, .12, .04, 0x5e432c, 0], ['c', 0, 0, 0, .02, .9, 0x5e432c, 1], ['c', 0, .82, 0, .18, .22, 0xe8c890, 1]] },
+  cage: { n: '쥐장', parts: [['b', 0, 0, 0, .64, .03, .48, GY, 1], ['b', 0, .42, 0, .64, .03, .48, SV, 1], ['b', 0, 0, -.235, .64, .42, .01, SV, 1], ['b', 0, 0, .235, .64, .42, .01, SV, 1], ['b', -.315, 0, 0, .01, .42, .48, SV, 1], ['b', .315, 0, 0, .01, .42, .48, SV, 1], ['c', 0, .45, 0, .03, .1, SV, 0]] }
+};
+
+// ───────── 우리 집 (1층 원룸 + 2층 다락방) ─────────
+// 1층: x 1~23, z 1~15. 현관문은 남쪽 벽 x 11~12. 다락방: x 14~23, z 1~6 위 (y 2.3)
+export const HOUSE = {
+  name: '우리 집',
+  grid: [
+    '########################',
+    ...Array(14).fill('#......................#'),
+    '###########+############'
+  ],
+  // [가구, x, z, 방향(0 = 등이 북쪽, 1 = 동쪽, 2 = 남쪽, 3 = 서쪽), 바닥 높이]
+  furn: [
+    ['kmat', 4.1, 2.7, 0], ['rug', 20.2, 9.5, 1], ['rug', 9.5, 3.4, 0],
+    ['fridge', 1.4, 1.37, 0], ['counter', 3.05, 1.32, 0], ['upcab', 3.05, 1.195, 0], ['cooker', 3.5, 1.2, 0, .91], ['jars', 2.62, 1.12, 0, .91],
+    ['chair', 4.0, 2.06, 2], ['bin', 5.0, 1.3, 0],
+    ['table', 5.6, 4.3, 0], ['chair', 5.6, 3.45, 0], ['chair', 5.6, 5.15, 2],
+    ['bed', 9.5, 1.97, 0], ['plant', 7.7, 1.4, 0],
+    ['tvstand', 22.77, 9.5, 1], ['sofa', 19.0, 9.5, 3], ['coffee', 20.9, 9.5, 3], ['lamp', 22.5, 11.6, 0],
+    ['desk', 1.32, 9.0, 3], ['ochair', 2.15, 9.1, 1],
+    ['chest', 1.25, 12.6, 3], ['ladder', 6.0, 14.78, 2], ['shoecab', 13.6, 14.8, 2],
+    ['cbox', 8.6, 11.8, 0], ['basket', 16.6, 13.6, 0], ['plant', 21.9, 14.3, 0], ['plant', 1.5, 5.0, 0],
+    ['cage', 4.6, 7.8, 0],
+    // 다락방
+    ['trunk', 20.5, 1.24, 0, ATTIC_Y], ['boxpile', 22.5, 2.9, 1, ATTIC_Y], ['rocker', 17.2, 4.2, 0, ATTIC_Y], ['oldshelf', 14.25, 4.4, 3, ATTIC_Y],
+    ['blanket', 19.4, 5.25, 2, ATTIC_Y], ['oldlamp', 22.4, 5.5, 0, ATTIC_Y]
+  ],
+  cage: [4.6, 7.8],
+  momSpawn: [11.5, 6.5],
+  mouseSpawn: [19.5, 12.6],
+  door: { x0: 11, x1: 12, z: 15, plate: [11.5, 14.93] },
+  stairs: { x0: 14.0, z0: 1.0, z1: 1.9, n: 12, run: .3 },
+  attic: { x0: 14, x1: 23, z0: 1, z1: 6 },
+  // 쥐구멍 2쌍 [x, y, z, 벽 방향 → 나오는 방향 (dx, dz)]
+  holes: [
+    [[1.0, 0, 6.2, 1, 0], [23.0, 0, 13.6, -1, 0]],
+    [[8.6, 0, 15.0, 0, -1], [23.0, ATTIC_Y, 4.2, -1, 0]]
+  ],
+  // 열쇠 놓일 수 있는 곳 [x, z, 층(0/1)]
+  keys: {
+    attic: [[20.5, 1.22, 1], [15.0, 5.6, 1], [22.6, 2.9, 1], [14.3, 4.5, 1], [17.2, 4.15, 1], [21.2, 5.6, 1]],
+    high: [[5.3, 4.1, 0], [1.25, 8.7, 0], [2.2, 1.5, 0], [6.0, 14.93, 0], [9.6, 2.6, 0], [22.7, 10.2, 0]],
+    low: [[9.5, 1.6, 0], [19.1, 9.3, 0], [5.6, 4.3, 0], [1.5, 9.5, 0], [22.6, 6.5, 0], [12.3, 4.4, 0]]
+  }
+};
+
+// 방향 → Y 회전 (three.js rotation.y)
+export const ROT = [0, -Math.PI / 2, Math.PI, Math.PI / 2];
+// 가구 좌표 → 세계 좌표 (방향 0~3)
+function rotXZ(x, z, r) { return r === 0 ? [x, z] : r === 1 ? [-z, x] : r === 2 ? [-x, -z] : [z, -x]; }
+
+// ───────── 집 만들기 (충돌 상자 · 숨는 곳 · 쥐구멍 등) ─────────
+let _house = null;
+export function house() { return _house || (_house = buildHouse()); }
+
+function buildHouse() {
+  const H = HOUSE, boxes = [], spots = [], placed = [];
+  const add = (x0, x1, y0, y1, z0, z1, k, fi = -1) => { boxes.push({ x0: Math.min(x0, x1), x1: Math.max(x0, x1), y0, y1, z0: Math.min(z0, z1), z1: Math.max(z0, z1), k, fi }); };
+  // 1층 벽 (격자)
+  const g = H.grid, GW = g[0].length, GD = g.length;
+  for (let z = 0; z < GD; z++) {
+    let run = -1;
+    for (let x = 0; x <= GW; x++) {
+      const w = x < GW && g[z][x] === '#';
+      if (w && run < 0) run = x;
+      if (!w && run >= 0) { add(run, x, 0, WALL_H, z, z + 1, 'wall'); run = -1; }
+    }
+  }
+  // 문 (닫혀 있을 때만 막힘)
+  add(H.door.x0, H.door.x1, 0, 2.1, H.door.z, H.door.z + .14, 'door');
+  add(H.door.x0, H.door.x1, 2.1, WALL_H, H.door.z, H.door.z + 1, 'wall');
+  // 현관 밖 (탈출 구역 벽)
+  add(H.door.x0 - .2, H.door.x0, 0, WALL_H, 16, 17.5, 'wall'); add(H.door.x1, H.door.x1 + .2, 0, WALL_H, 16, 17.5, 'wall'); add(H.door.x0 - .2, H.door.x1 + .2, 0, WALL_H, 17.5, 17.7, 'wall');
+  // 계단 (동쪽으로 올라감)
+  const S = H.stairs, rise = ATTIC_Y / S.n;
+  for (let i = 0; i < S.n; i++) add(S.x0 + i * S.run, S.x0 + (i + 1) * S.run, 0, (i + 1) * rise, S.z0, S.z1, 'stair');
+  const sx1 = S.x0 + S.n * S.run;
+  // 1층 천장 = 다락방 바닥 (계단 구멍 빼고)
+  add(1, 23, WALL_H, ATTIC_Y, S.z1, 15, 'slab');
+  add(1, S.x0, WALL_H, ATTIC_Y, 1, S.z1, 'slab');
+  add(sx1, 23, WALL_H, ATTIC_Y, 1, S.z1, 'slab');
+  // 다락방 벽 · 난간 · 지붕
+  const A = H.attic;
+  add(A.x0 - .2, A.x0, ATTIC_Y, ATTIC_TOP, A.z0, A.z1 + .2, 'awall');
+  add(A.x1, A.x1 + .2, ATTIC_Y, ATTIC_TOP, A.z0 - .2, A.z1 + .2, 'awall');
+  add(A.x0 - .2, A.x1 + .2, ATTIC_Y, ATTIC_TOP, A.z0 - .2, A.z0, 'awall');
+  add(A.x0 - .2, A.x1 + .2, ATTIC_Y, ATTIC_TOP, A.z1, A.z1 + .2, 'awall');
+  add(A.x0, sx1, ATTIC_Y, ATTIC_Y + .85, S.z1, S.z1 + .05, 'rail');
+  add(A.x0, A.x1, ATTIC_TOP, ATTIC_TOP + .1, A.z0, A.z1, 'roof');
+  // 가구
+  H.furn.forEach(([t, x, z, r, y = 0], fi) => {
+    const F = FURN[t]; placed.push({ t, x, z, r, y, fi });
+    for (const p of F.parts) {
+      const solid = p[0] === 's' ? p[8] : p[0] === 'c' ? p[7] : p[8];
+      if (!solid) continue;
+      let lx, ly, lz, w, h, d;
+      if (p[0] === 'b') [, lx, ly, lz, w, h, d] = p;
+      else if (p[0] === 'c') { [, lx, ly, lz] = p; w = d = p[4] * 2; h = p[5]; }
+      else { [, lx, ly, lz] = p; w = p[4] * 2; h = p[5] * 2; d = p[6] * 2; }
+      const [cx, cz] = rotXZ(lx, lz, r), sw = r % 2 ? d : w, sd = r % 2 ? w : d;
+      add(x + cx - sw / 2, x + cx + sw / 2, y + ly, y + ly + h, z + cz - sd / 2, z + cz + sd / 2, 'f', fi);
+    }
+    for (const s of F.spots || []) {
+      const [fx, fz] = rotXZ(s.x, s.z, r), [nx, nz] = rotXZ(0, 1, r);
+      const ix = x + fx - nx * .12, iz = z + fz - nz * .12;
+      spots.push({ fi, t, k: s.k, x: x + fx, y: y + s.y, z: z + fz, w: s.w, h: s.h, nx, nz, r, ix, iz, ox: x + fx + nx * .14, oz: z + fz + nz * .14 });
+    }
+  });
+  // 쥐구멍
+  const holes = H.holes.map(pair => pair.map(([x, y, z, dx, dz]) => ({ x, y, z, dx, dz, mx: x + dx * .1, mz: z + dz * .1 })));
+  // 열쇠 후보: 그 자리 바닥 높이
+  const W = { boxes, spots, placed, holes, GW, GD, doorOpen: false };
+  indexBoxes(W);
+  const kc = {};
+  for (const [k, list] of Object.entries(H.keys)) kc[k] = list.map(([x, z, lv]) => [x, topAt(W, x, z, k === 'low' ? .05 : lv ? ATTIC_TOP - .1 : WALL_H - .1) + .001, z]);
+  W.keyCands = kc;
+  return W;
 }
 
-// 같은 시드면 모두에게 같은 물건 배치
-// 물건 바닥 반지름 (장난감이 부딪히는 크기)
-export function objR(t) { return ({ s: .12, m: .2, l: .27 })[OBJ[t] ? OBJ[t].s : 'm']; }
-
-export function genWorld(mapId, seed) {
-  const M = MAPS[mapId];
-  const R = rng(seed);
-  const W = M.grid[0].length, H = M.grid.length;
-  const types = []; for (const [k, n] of Object.entries(M.objs)) for (let i = 0; i < n; i++) types.push(k);
-  const objs = [];
-  const far = (x, z, d) => Math.hypot(x - M.box[0], z - M.box[1]) > d && Math.hypot(x - M.mom[0], z - M.mom[1]) > 1.2 && Math.hypot(x - M.toy[0], z - M.toy[1]) > 1.2;
-  const dec = M.decor.map(([t, x, z]) => placeDecor(M, t, x, z));
-  const doors = []; M.grid.forEach((row, z) => [...row].forEach((c, x) => { if (c === '+') doors.push([x + .5, z + .5]); }));
-  // 장난감이 물건에 부딪히니까, 물건끼리·가구와는 장난감이 지나갈 틈(0.5)을 남긴다
-  const GAP = .5;
-  const ok = (x, z, r, small, or) => {
-    for (const [dx, dz] of [[r, 0], [-r, 0], [0, r], [0, -r]]) if (solid(M, x + dx, z + dz)) return false;
-    for (const [a, b] of doors) if (Math.hypot(x - a, z - b) < 1.2) return false;
-    for (const d of dec) {
-      const inX = Math.abs(x - d.x) < d.hw + or + GAP, inZ = Math.abs(z - d.z) < d.hd + or + GAP;
-      if (!inX || !inZ) continue;
-      // 작은 물건은 침대·식탁·책상 밑에도 놓인다 (다리 피해서 안쪽에)
-      if (small && DECOR[d.t].under && Math.abs(x - d.x) < d.hw - .15 && Math.abs(z - d.z) < d.hd - .15) continue;
-      return false;
+// 상자들을 1칸짜리 격자에 넣어 둔다
+function indexBoxes(W) {
+  W.cells = new Map();
+  W.boxes.forEach((b, i) => {
+    for (let cx = Math.floor(b.x0); cx <= Math.floor(b.x1 - 1e-6); cx++) for (let cz = Math.floor(b.z0); cz <= Math.floor(b.z1 - 1e-6); cz++) {
+      const k = cx + cz * 64; let a = W.cells.get(k); if (!a) W.cells.set(k, a = []); a.push(i);
     }
-    for (const o of objs) if (Math.hypot(x - o.x, z - o.z) < o.r + or + GAP) return false;
-    return far(x, z, 1.6);
-  };
-  // 벽 쪽에 붙는 걸 좋아한다
-  const wallish = (x, z) => solid(M, x + .6, z) || solid(M, x - .6, z) || solid(M, x, z + .6) || solid(M, x, z - .6);
-  for (const t of types) {
-    const small = OBJ[t].s === 's', or = objR(t);
-    for (let tries = 0; tries < 200; tries++) {
-      let x, z;
-      // 3분의 1은 가구 근처(또는 밑)에 모인다
-      if (tries < 40 && R() < .35) { const d = dec[R() * dec.length | 0]; x = d.x + (R() - .5) * (d.hw * 2 + 1.2); z = d.z + (R() - .5) * (d.hd * 2 + 1.2); }
-      else { x = 1 + R() * (W - 2); z = 1 + R() * (H - 2); }
-      if (x < 1 || z < 1 || x > W - 1 || z > H - 1 || !ok(x, z, Math.max(.2, or), small, or)) continue;
-      if (!wallish(x, z) && R() < .35) continue;
-      objs.push({ t, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, r: or });
-      break;
-    }
-  }
-  // 침대·식탁·책상 밑에도 작은 물건 하나씩 (밑에 숨은 장난감이 너무 튀지 않게)
-  const smalls = Object.keys(M.objs).filter(k => OBJ[k].s === 's');
-  for (const d of dec) {
-    if (!DECOR[d.t].under || !smalls.length || R() < .25) continue;
-    const t = smalls[R() * smalls.length | 0];
-    const x = d.x + (R() - .5) * Math.max(0, d.hw * 2 - .5), z = d.z + (R() - .5) * Math.max(0, d.hd * 2 - .5);
-    if (objs.some(o => Math.hypot(x - o.x, z - o.z) < o.r + objR(t) + GAP)) continue;
-    objs.push({ t, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, r: objR(t) });
-  }
-  return { M, W, H, objs, decor: dec };
+  });
 }
-
-// 가장 가까운 벽(1.2칸 안)에 등을 붙인다. rot: 모델의 등(-z)이 벽을 보게 하는 Y 회전
-export function placeDecor(M, t, x, z) {
-  const D = DECOR[t];
-  const out = { t, x, z, rot: 0, hw: D.w / 2, hd: D.d / 2 };
-  if (!D.snap) return out;
-  let best = null;
-  for (const [dx, dz, rot] of [[0, -1, 0], [0, 1, Math.PI], [-1, 0, Math.PI / 2], [1, 0, -Math.PI / 2]]) {
-    let t2 = 0; while (t2 < 1.4 && !solid(M, x + dx * t2, z + dz * t2)) t2 += .02;
-    if (t2 < 1.4 && (!best || t2 < best.t)) best = { t: t2, dx, dz, rot };
+const _seen = new Set();
+function near(W, x0, x1, z0, z1) {
+  _seen.clear(); const out = [];
+  for (let cx = Math.floor(x0); cx <= Math.floor(x1); cx++) for (let cz = Math.floor(z0); cz <= Math.floor(z1); cz++) {
+    const a = W.cells.get(cx + cz * 64); if (!a) continue;
+    for (const i of a) if (!_seen.has(i)) { _seen.add(i); const b = W.boxes[i]; if (b.k === 'door' && W.doorOpen) continue; out.push(b); }
   }
-  if (!best) return out;
-  const side = best.dx ? D.w : D.d; // 회전 후 벽 쪽 두께 = 깊이
-  const half = D.d / 2;
-  out.rot = best.rot;
-  if (best.dx) { out.hw = D.d / 2; out.hd = D.w / 2; out.x = Math.round((x + best.dx * best.t - best.dx * (half + .02)) * 100) / 100; }
-  else { out.z = Math.round((z + best.dz * best.t - best.dz * (half + .02)) * 100) / 100; }
-  void side;
   return out;
 }
-
-export function roomName(M, x, z) {
-  for (const [x0, z0, x1, z1, n] of M.rooms) if (x >= x0 && x < x1 + 1 && z >= z0 && z < z1 + 1) return n;
-  return '어딘가';
+// (x, z) 자리에서 yMax 아래 가장 높은 윗면
+export function topAt(W, x, z, yMax, r = .02) {
+  let best = 0;
+  for (const b of near(W, x - r, x + r, z - r, z + r)) {
+    if (x + r <= b.x0 || x - r >= b.x1 || z + r <= b.z0 || z - r >= b.z1) continue;
+    if (b.y1 <= yMax + 1e-4 && b.y1 > best) best = b.y1;
+  }
+  return best;
 }
 
-// 벽·가구에 막히는 이동 (축 따로)
-// small = 작은 물건으로 변신한 장난감 (침대·식탁·책상 밑을 지나갈 수 있다)
-// objs = 진짜 물건에도 부딪힘 (장난감). 이미 겹쳐 있으면 빠져나가는 쪽으로는 움직일 수 있다
-export function collide(W, x, z, nx, nz, r = CFG.RADIUS, small = false, objs = false) {
-  const M = W.M;
-  const free = (px, pz) => {
-    if (objs) for (const o of W.objs) { const lim = o.r + r * .8, d = Math.hypot(px - o.x, pz - o.z); if (d < lim && d < Math.hypot(x - o.x, z - o.z) - 1e-6) return false; }
-    if (solid(M, px - r, pz - r) || solid(M, px + r, pz - r) || solid(M, px - r, pz + r) || solid(M, px + r, pz + r)) return false;
-    for (const d of W.decor) { if (small && DECOR[d.t].under) continue; if (Math.abs(px - d.x) < d.hw + r && Math.abs(pz - d.z) < d.hd + r) return false; }
-    return true;
+// ───────── 몸 움직이기 (벽·가구 충돌 + 중력) ─────────
+// b = { x, y, z, vy, ground }, P = CFG.MOUSE 또는 CFG.MOM
+export function moveBody(W, b, dx, dz, dt, P) {
+  const r = P.r, h = P.h;
+  const axis = (ax) => {
+    const nx = ax ? b.x + dx : b.x, nz = ax ? b.z : b.z + dz;
+    if (nx === b.x && nz === b.z) return;
+    let up = b.y;
+    for (const o of near(W, nx - r, nx + r, nz - r, nz + r)) {
+      if (nx + r <= o.x0 || nx - r >= o.x1 || nz + r <= o.z0 || nz - r >= o.z1) continue;
+      if (b.y + h <= o.y0 + 1e-4 || b.y >= o.y1 - 1e-4) continue;
+      // 이미 겹쳐 있던 상자는 빠져나가게 둔다
+      if (b.x + r > o.x0 && b.x - r < o.x1 && b.z + r > o.z0 && b.z - r < o.z1) continue;
+      if (o.y1 - b.y <= P.step && b.ground) { if (o.y1 > up) up = o.y1; }
+      else return;
+    }
+    if (up > b.y) { // 올라선 자리에 머리 공간이 있는지
+      for (const o of near(W, nx - r, nx + r, nz - r, nz + r)) {
+        if (nx + r <= o.x0 || nx - r >= o.x1 || nz + r <= o.z0 || nz - r >= o.z1) continue;
+        if (o.y0 < up + h - 1e-4 && o.y1 > up + 1e-4) return;
+      }
+    }
+    b.x = nx; b.z = nz; b.y = up;
   };
-  let rx = x, rz = z;
-  if (free(nx, rz)) rx = nx;
-  if (free(rx, nz)) rz = nz;
-  return [rx, rz];
+  axis(1); axis(0);
+  // 위아래
+  b.vy -= CFG.G * dt;
+  let ny = b.y + b.vy * dt;
+  const fp = near(W, b.x - r, b.x + r, b.z - r, b.z + r).filter(o => b.x + r > o.x0 && b.x - r < o.x1 && b.z + r > o.z0 && b.z - r < o.z1);
+  if (b.vy <= 0) {
+    let gr = 0; for (const o of fp) if (o.y1 <= b.y + 1e-3 && o.y1 > gr) gr = o.y1;
+    if (b.ground && b.vy * dt > -P.step && gr >= b.y - P.step) ny = Math.min(ny, b.y) <= gr ? gr : ny; // 계단 내려갈 때 붙어서
+    if (ny <= gr + 1e-4) { ny = gr; b.vy = 0; b.ground = true; } else b.ground = false;
+  } else {
+    let ce = 1e9; for (const o of fp) if (o.y0 >= b.y + h - 1e-3 && o.y0 < ce) ce = o.y0;
+    if (ny + h > ce) { ny = ce - h; b.vy = 0; }
+    b.ground = false;
+  }
+  b.y = ny;
 }
 
-// 변신할 수 있는 모습 = 물건 26종 + 가구 24종 (가구는 '아주 큼')
+// 광선이 상자에 닿는 거리 (안 닿으면 Infinity)
+export function rayBox(ox, oy, oz, dx, dy, dz, b, max = 1e9) {
+  let t0 = 0, t1 = max;
+  for (const [o, d, lo, hi] of [[ox, dx, b.x0, b.x1], [oy, dy, b.y0, b.y1], [oz, dz, b.z0, b.z1]]) {
+    if (Math.abs(d) < 1e-9) { if (o < lo || o > hi) return Infinity; continue; }
+    let a = (lo - o) / d, c = (hi - o) / d; if (a > c) { const t = a; a = c; c = t; }
+    if (a > t0) t0 = a; if (c < t1) t1 = c; if (t0 > t1) return Infinity;
+  }
+  return t0;
+}
+// 광선이 처음 부딪히는 벽·가구까지 거리
+export function rayWorld(W, ox, oy, oz, dx, dy, dz, max) {
+  let best = max;
+  const ex = ox + dx * max, ez = oz + dz * max;
+  for (const b of near(W, Math.min(ox, ex), Math.max(ox, ex), Math.min(oz, ez), Math.max(oz, ez))) {
+    const t = rayBox(ox, oy, oz, dx, dy, dz, b, best); if (t < best) best = t;
+  }
+  return best;
+}
+// 두 점 사이가 막혔는지
+export function blocked(W, ax, ay, az, bx, by, bz) {
+  const dx = bx - ax, dy = by - ay, dz = bz - az, d = Math.hypot(dx, dy, dz) || 1;
+  return rayWorld(W, ax, ay, az, dx / d, dy / d, dz / d, d) < d - .05;
+}
+
+export function inAttic(x, y, z) { const A = HOUSE.attic; return y > WALL_H - .05 && x > A.x0 - .5 && x < A.x1 + .5 && z > A.z0 - .5 && z < A.z1 + .5; }
+export function placeName(x, y, z) {
+  if (inAttic(x, y, z)) return '다락방';
+  if (z > 15.1) return '현관 밖';
+  if (x < 7.5 && z < 6.5) return '부엌';
+  if (x > 16 && z > 6.5 && z < 12.5) return '거실';
+  if (x < 3.5 && z > 7) return '컴퓨터 자리';
+  if (x > 13 && z < 2.5) return '계단';
+  if (z > 12.5) return '현관 쪽';
+  return '방 한가운데';
+}
+
 // 받침에 맞는 조사: josa('상자', '이었어요') → '상자였어요', josa('컵', '을') → '컵을'
 const JOSA = { '이었어요': ['이었어요', '였어요'], '였어요': ['이었어요', '였어요'], '이에요': ['이에요', '예요'], '예요': ['이에요', '예요'],
   '이': ['이', '가'], '가': ['이', '가'], '을': ['을', '를'], '를': ['을', '를'], '은': ['은', '는'], '는': ['은', '는'], '과': ['과', '와'], '와': ['과', '와'], '으로': ['으로', '로'], '로': ['으로', '로'] };
@@ -304,21 +334,6 @@ export function josa(word, j) {
   return w + (fin ? pair[0] : pair[1]);
 }
 
-export function formInfo(f) {
-  if (OBJ[f]) return OBJ[f];
-  if (DECOR[f]) return { n: DECOR[f].n, s: 'xl' };
-  return null;
-}
-// 가구 모습일 때 손이 닿는 여유 (덩치가 크니까 가장자리 기준)
-export function formReach(f) { return DECOR[f] ? Math.max(DECOR[f].w, DECOR[f].d) / 2 : 0; }
-export function formRadius(f) { return DECOR[f] ? Math.min(.35, Math.min(DECOR[f].w, DECOR[f].d) / 2) : CFG.RADIUS; }
-export function speedOf(role, form) {
-  if (role === 'mom') return CFG.SPEED.mom;
-  if (!form) return CFG.SPEED.toy;
-  const fi = formInfo(form);
-  return CFG.SPEED[fi ? fi.s : 'm'];
-}
-
 // 엄마 모습: 팔레트(최대 64색) + 32x56 글자 (팔레트 번호, '.' = 투명)
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 export const LOOK_CH = B64;
@@ -328,4 +343,320 @@ export function lookValid(v) {
   for (const c of v.p) if (typeof c !== 'string' || !/^#[0-9a-f]{6}$/i.test(c)) return false;
   for (let i = 0; i < v.d.length; i++) { const ch = v.d[i]; if (ch !== '.' && (B64.indexOf(ch) < 0 || B64.indexOf(ch) >= v.p.length)) return false; }
   return true;
+}
+
+// 예전 화면(통계 등)과 맞추기용
+export const MAPS = { house: { name: HOUSE.name } };
+export const MAP_IDS = ['house'];
+
+
+// ───────── 게임 규칙 (서버와 혼자 연습이 같이 쓴다) ─────────
+// emit(받는 사람 id 또는 null = 전원, 메시지)
+const r2 = v => Math.round(v * 100) / 100;
+const clampN = (v, a, b) => v < a ? a : v > b ? b : v;
+export class Sim {
+  constructor({ seed = 1, players, modes = {}, practice = false, emit, now = () => Date.now(), isOnline = () => true }) {
+    this.W = house(); this.emit = emit; this.now = now; this.isOnline = isOnline;
+    this.practice = practice; this.modes = modes;
+    this.R = rng(seed);
+    const R = this.R, H = HOUSE;
+    this.P = new Map(); let mi = 0, oi = 0;
+    for (const p of players) {
+      const mom = p.role === 'mom';
+      let x, z;
+      if (mom) { x = H.momSpawn[0] + (oi++ % 2) * .6; z = H.momSpawn[1]; }
+      else { const a = mi * 2.4, rr = .3 + (mi % 3) * .18; x = H.mouseSpawn[0] + Math.cos(a) * rr; z = H.mouseSpawn[1] + Math.sin(a) * rr; mi++; }
+      this.P.set(p.id, {
+        id: p.id, name: p.name, role: mom ? 'mom' : 'mouse', bot: !!p.bot, x, y: 0, z, a: mom ? Math.PI / 2 : -Math.PI / 2, mv: 0,
+        caught: false, caughtAt: 0, grace: 0, hide: -1, hideT: 0, sqNext: 0, key: -1, esc: false, gone: false,
+        stam: CFG.STAMINA, rest: 0, regen: 0, vac: 0, lastT: this.now(), res: 0, resT: 0, grabT: 0,
+        stat: { catches: 0, miss: 0, opens: 0, keysIn: 0, keysGot: 0, rescues: 0, caughtN: 0, surv: 0, escAt: 0, holes: 0, hides: 0 }
+      });
+    }
+    // 열쇠: 다락방 1 + 1층 높은 곳 1 + 1층 아무 데나 1
+    const pick = list => list.splice(R() * list.length | 0, 1)[0];
+    const kc = this.W.keyCands, hi = kc.high.slice(), lo = kc.low.slice(), at = kc.attic.slice();
+    const ks = [pick(at), pick(hi)]; const rest = hi.concat(lo); ks.push(pick(rest));
+    this.keys = ks.map(([x, y, z]) => ({ x, y, z, by: null, in: false }));
+    this.holeT = [0, 0]; this.doorOpen = false;
+    this.ph = practice ? 'hunt' : 'prep'; this.t = practice ? CFG.HUNT : CFG.PREP;
+    this.prev = this.now(); this.ended = false; this.startAt = this.now();
+  }
+  get mice() { return [...this.P.values()].filter(q => q.role === 'mouse'); }
+  get moms() { return [...this.P.values()].filter(q => q.role === 'mom'); }
+  needed() { return Math.max(1, Math.ceil(this.mice.filter(q => !q.gone).length / 2)); }
+  keysIn() { return this.keys.filter(k => k.in).length; }
+  active(q) { return q && q.role === 'mouse' && !q.caught && !q.esc && !q.gone; }
+  out(m) { this.emit(null, m); }
+  to(id, m) { this.emit(id, m); }
+  toRole(role, m) { for (const q of this.P.values()) if (q.role === role && !q.gone) this.emit(q.id, m); }
+
+  startMsg(id) {
+    const roles = {}, names = {}, bots = {};
+    for (const q of this.P.values()) { roles[q.id] = q.role; names[q.id] = q.name; if (q.bot) bots[q.id] = 1; }
+    const me = this.P.get(id);
+    return { type: 'start', ph: this.ph, t: this.t, modes: this.modes, roles, names, bots, needed: this.needed(), K: this.keyRows(), you: id, practice: this.practice,
+      me: me && { x: me.x, y: me.y, z: me.z, a: me.a, caught: me.caught, hide: me.hide, esc: me.esc } };
+  }
+  keyRows(forMom) {
+    return this.keys.map(k => {
+      if (k.in) return [0, 0, 0, 0, 1];
+      if (k.by) { const h = this.P.get(k.by); return [0, 0, 0, forMom && h && h.hide >= 0 ? 0 : k.by, 0]; }
+      return [r2(k.x), r2(k.y), r2(k.z), 0, 0];
+    });
+  }
+
+  // ───── 받은 메시지 ─────
+  msg(id, m) {
+    const p = this.P.get(id); if (!p || p.gone || this.ended) return;
+    const now = this.now();
+    switch (m.type) {
+      case 'st': {
+        if (p.caught || p.esc || p.hide >= 0 || p.rest > 0) return;
+        if (this.ph === 'prep' && p.role === 'mom') return;
+        let x = +m.x, y = +m.y, z = +m.z; if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(y)) return;
+        const dt = Math.min(1, (now - p.lastT) / 1000); p.lastT = now;
+        const sp = p.role === 'mom' ? CFG.SPEED.mom : CFG.SPEED.mouse;
+        const max = sp * dt * 1.6 + .35, d = Math.hypot(x - p.x, z - p.z);
+        if (d > max) { const k = max / d; x = p.x + (x - p.x) * k; z = p.z + (z - p.z) * k; this.to(id, { type: 'fix', x: r2(x), y: r2(y), z: r2(z) }); }
+        p.x = clampN(x, .9, 23.1); p.z = clampN(z, .9, this.doorOpen ? 17.6 : 15.2); p.y = clampN(y, 0, ATTIC_TOP);
+        if (Number.isFinite(+m.a)) p.a = +m.a;
+        p.mv = m.mv ? 1 : 0;
+        break;
+      }
+      case 'hide': {
+        if (p.role !== 'mouse' || p.caught || p.esc) return;
+        const S = this.W.spots;
+        if (m.s === -1 || m.s === undefined) { if (p.hide >= 0) this.unhide(p, true); return; }
+        const s = S[m.s | 0]; if (!s || p.hide >= 0) return;
+        if (Math.hypot(p.x - s.x, p.z - s.z) > .55 || p.y < s.y - .6 || p.y > s.y + .3) return;
+        if ([...this.P.values()].some(q => q.hide === (m.s | 0))) { this.to(id, { type: 'ev', e: 'full' }); return; }
+        p.hide = m.s | 0; p.hideT = 0; p.sqNext = CFG.HIDE_SQ; p.stat.hides++;
+        p.x = s.ix; p.y = s.y; p.z = s.iz; p.mv = 0;
+        for (const q of this.P.values()) if (q.role === 'mouse') this.to(q.id, { type: 'ev', e: 'hide', id, s: p.hide });
+        break;
+      }
+      case 'hole': {
+        if (!this.active(p) || p.hide >= 0) return;
+        const pi = m.p | 0, ei = m.e | 0, pair = HOUSE.holes[pi] && this.W.holes[pi]; if (!pair) return;
+        const a = pair[ei], b = pair[1 - ei]; if (!a) return;
+        if (now < this.holeT[pi]) return;
+        if (Math.hypot(p.x - a.mx, p.z - a.mz) > .45 || Math.abs(p.y - a.y) > .3) return;
+        this.holeT[pi] = now + CFG.HOLE_BLOCK * 1000; p.stat.holes++;
+        p.x = b.x + b.dx * .25; p.z = b.z + b.dz * .25; p.y = b.y; p.lastT = now;
+        this.to(id, { type: 'fix', x: r2(p.x), y: r2(p.y), z: r2(p.z), a: Math.atan2(b.dz, b.dx) });
+        this.out({ type: 'ev', e: 'hole', id, p: pi, from: ei });
+        break;
+      }
+      case 'grab': {
+        if (p.role !== 'mom' || this.ph !== 'hunt' || p.rest > 0) return;
+        if (now - p.grabT < 300) return; p.grabT = now;
+        const t = this.P.get(String(m.id || ''));
+        if (!this.active(t) || t.hide >= 0 || now < t.grace) return;
+        if (Math.hypot(t.x - p.x, t.y + .06 - (p.y + CFG.MOM.eye), t.z - p.z) > CFG.GRAB_REACH + .3) return;
+        this.catchMouse(p, t);
+        break;
+      }
+      case 'open': {
+        if (p.role !== 'mom' || this.ph !== 'hunt' || p.rest > 0) return;
+        if (now - p.grabT < 300) return; p.grabT = now;
+        const si = m.s | 0, s = this.W.spots[si]; if (!s) return;
+        if (Math.hypot(s.x - p.x, s.y + s.h / 2 - (p.y + CFG.MOM.eye), s.z - p.z) > CFG.OPEN_REACH + .35) return;
+        p.stat.opens++;
+        const hit = [...this.P.values()].filter(q => this.active(q) && q.hide === si && now >= q.grace);
+        this.out({ type: 'ev', e: 'open', id, s: si, hit: hit.map(q => q.id) });
+        if (hit.length) { for (const q of hit) this.catchMouse(p, q, si); return; }
+        p.stat.miss++; p.stam--; p.regen = 0;
+        const ev = { type: 'ev', e: 'miss', id, s: si };
+        if (p.stam <= 0) { p.rest = CFG.REST; p.stam = 0; ev.rest = 1; }
+        this.out(ev);
+        break;
+      }
+      case 'vac': {
+        if (p.role !== 'mom' || this.ph !== 'hunt' || p.rest > 0 || now < p.vac) return;
+        p.vac = now + CFG.VAC_CD * 1000;
+        const hit = [];
+        for (const t of this.P.values()) {
+          if (!this.active(t)) continue;
+          const d = Math.hypot(t.x - p.x, t.z - p.z);
+          if (d >= CFG.VAC_R || Math.abs(t.y - p.y) > 1.6) continue;
+          hit.push(t.id);
+          if (t.hide >= 0) this.unhide(t, true);
+          this.to(t.id, { type: 'pull', x: r2(p.x), z: r2(p.z), k: r2(Math.min(.8, Math.max(0, d - .45))) });
+        }
+        this.out({ type: 'ev', e: 'vac', id, x: r2(p.x), y: r2(p.y), z: r2(p.z), hit });
+        break;
+      }
+      case 'res': { // 쥐장 구출 (누르고 있는 동안 계속 온다)
+        if (!this.active(p) || p.hide >= 0 || this.ph !== 'hunt') return;
+        const c = HOUSE.cage;
+        if (Math.hypot(p.x - c[0], p.z - c[1]) > CFG.RESCUE_R + .4 || p.y > .5) return;
+        if (!this.mice.some(t => t.caught && !t.gone)) return;
+        if (now - p.resT > 600) p.res = 0;
+        p.res += Math.min(.4, (now - (p.resT || now)) / 1000); p.resT = now;
+        this.out({ type: 'ev', e: 'resp', id, v: r2(p.res / CFG.RESCUE) });
+        if (p.res >= CFG.RESCUE) { p.res = 0; this.rescue(p); }
+        break;
+      }
+      case 'sign': {
+        if (p.role !== 'mouse' || now - (p.pingT || 0) < 2500) return;
+        const x = +m.x, y = +m.y, z = +m.z; if (![x, y, z].every(Number.isFinite)) return;
+        p.pingT = now;
+        this.toRole('mouse', { type: 'sign', a: id, x: r2(x), y: r2(y), z: r2(z) });
+        break;
+      }
+    }
+  }
+
+  unhide(p, tell) {
+    const s = this.W.spots[p.hide]; if (!s) { p.hide = -1; return; }
+    p.hide = -1; p.x = s.ox; p.z = s.oz; p.y = s.y; p.lastT = this.now();
+    if (tell) this.to(p.id, { type: 'fix', x: r2(p.x), y: r2(p.y), z: r2(p.z), out: 1 });
+    for (const q of this.P.values()) if (q.role === 'mouse') this.to(q.id, { type: 'ev', e: 'hide', id: p.id, s: -1 });
+  }
+  dropKey(p) {
+    if (p.key < 0) return;
+    const k = this.keys[p.key], s = p.hide >= 0 ? this.W.spots[p.hide] : null;
+    k.by = null; k.x = s ? s.ox : p.x; k.z = s ? s.oz : p.z; k.y = s ? s.y : p.y;
+    if (k.z > 15.1) k.z = 14.8;
+    this.out({ type: 'ev', e: 'key', k: p.key, id: p.id, act: 'drop' });
+    p.key = -1;
+  }
+  catchMouse(mom, t, si) {
+    const now = this.now(), c = HOUSE.cage;
+    const place = placeName(t.x, t.y, t.z), at = { x: r2(t.x), y: r2(t.y), z: r2(t.z) };
+    this.dropKey(t);
+    if (t.hide >= 0) { t.hide = -1; for (const q of this.P.values()) if (q.role === 'mouse') this.to(q.id, { type: 'ev', e: 'hide', id: t.id, s: -1 }); }
+    t.caught = true; t.caughtAt = now; t.stat.caughtN++; t.lastPlace = place;
+    t.x = c[0]; t.z = c[1]; t.y = .03;
+    mom.stat.catches++;
+    this.out({ type: 'ev', e: 'caught', id: t.id, by: mom.id, ...at, place, s: si === undefined ? -1 : si });
+    this.checkEnd();
+  }
+  rescue(by) {
+    const now = this.now(), c = HOUSE.cage, freed = [];
+    let k = 0;
+    for (const t of this.mice) if (t.caught && !t.gone) {
+      t.caught = false; t.grace = now + CFG.GRACE * 1000;
+      const a = k++ * 1.9 + .5; t.x = c[0] + Math.cos(a) * .55; t.z = c[1] + Math.sin(a) * .55; t.y = 0; t.lastT = now;
+      freed.push(t.id);
+      this.to(t.id, { type: 'fix', x: r2(t.x), y: 0, z: r2(t.z) });
+    }
+    by.stat.rescues++;
+    this.out({ type: 'ev', e: 'rescue', id: by.id, freed });
+  }
+  // 엄마가 나가면 쥐 하나가 엄마가 된다
+  momGone(id) {
+    const gp = this.P.get(id); if (!gp || gp.role !== 'mom' || gp.gone || this.ended) return;
+    gp.gone = true;
+    if (this.moms.some(q => !q.gone)) return;
+    const cands = this.mice.filter(q => !q.gone && !q.esc && !q.bot && this.isOnline(q.id));
+    if (cands.length < 2) { this.checkEnd(); return; }
+    const free = cands.filter(q => !q.caught), pool = free.length ? free : cands;
+    const nm = pool[this.R() * pool.length | 0];
+    this.dropKey(nm); if (nm.hide >= 0) this.unhide(nm, false);
+    nm.role = 'mom'; nm.caught = false; nm.x = HOUSE.momSpawn[0]; nm.z = HOUSE.momSpawn[1]; nm.y = 0; nm.stam = CFG.STAMINA; nm.rest = 0;
+    this.out({ type: 'ev', e: 'newmom', id: nm.id, old: id });
+    this.to(nm.id, { type: 'fix', x: nm.x, y: 0, z: nm.z });
+    this.checkEnd();
+  }
+  mouseGone(id) {
+    const p = this.P.get(id); if (!p || p.gone || this.ended) return;
+    this.dropKey(p); if (p.hide >= 0) this.unhide(p, false);
+    p.gone = true; this.checkEnd();
+  }
+
+  tick() {
+    if (this.ended) return;
+    const now = this.now(), dt = Math.min(.5, (now - this.prev) / 1000); this.prev = now;
+    this.t -= dt;
+    if (this.ph === 'prep' && this.t <= 0) {
+      this.ph = 'hunt'; this.t = CFG.HUNT;
+      for (const q of this.P.values()) q.lastT = now;
+      this.out({ type: 'ev', e: 'hunt' });
+    }
+    if (this.ph === 'hunt') {
+      const plate = HOUSE.door.plate;
+      for (const q of this.P.values()) {
+        if (q.gone) continue;
+        if (q.role === 'mom') {
+          if (q.rest > 0) { q.rest -= dt; if (q.rest <= 0) { q.rest = 0; q.stam = CFG.STAMINA; this.out({ type: 'ev', e: 'up', id: q.id }); } }
+          else if (q.stam < CFG.STAMINA) { q.regen += dt; if (q.regen >= CFG.STAM_REGEN) { q.regen = 0; q.stam++; } }
+          continue;
+        }
+        if (!this.active(q)) continue;
+        q.stat.surv += dt;
+        if (q.hide >= 0) {
+          q.hideT += dt;
+          if (q.hideT >= q.sqNext) { q.sqNext += CFG.HIDE_SQ_EVERY; this.out({ type: 'ev', e: 'sq', id: q.id, s: q.hide, x: r2(q.x), y: r2(q.y), z: r2(q.z) }); }
+          continue;
+        }
+        if (q.key < 0) {
+          for (let i = 0; i < this.keys.length; i++) {
+            const k = this.keys[i]; if (k.in || k.by) continue;
+            if (Math.hypot(k.x - q.x, (k.y - q.y) * .7, k.z - q.z) < .28) { k.by = q.id; q.key = i; q.stat.keysGot++; this.out({ type: 'ev', e: 'key', k: i, id: q.id, act: 'get' }); break; }
+          }
+        } else if (Math.hypot(q.x - plate[0], q.z - plate[1]) < .5 && q.y < .35) {
+          const k = this.keys[q.key]; k.in = true; k.by = null; q.stat.keysIn++;
+          const n = this.keysIn();
+          this.out({ type: 'ev', e: 'key', k: q.key, id: q.id, act: 'in', n });
+          q.key = -1;
+          if (n >= this.keys.length && !this.doorOpen) { this.doorOpen = true; this.out({ type: 'ev', e: 'door' }); }
+        }
+        if (this.doorOpen && q.z > HOUSE.door.z + .35) {
+          q.esc = true; q.stat.escAt = CFG.HUNT - this.t;
+          this.out({ type: 'ev', e: 'esc', id: q.id, n: this.mice.filter(m => m.esc && !m.gone).length, need: this.needed() });
+          this.checkEnd(); if (this.ended) return;
+        }
+      }
+      if (this.t <= 0) { this.end('mom', '시간이 다 됐어요'); return; }
+    }
+    this.snap(now);
+  }
+  snap(now) {
+    const rows = (forMom) => {
+      const P = [];
+      for (const q of this.P.values()) {
+        if (q.gone) continue;
+        const fl = (q.hide >= 0 ? 1 : 0) | (q.mv ? 2 : 0) | (q.caught ? 4 : 0) | (now < q.grace ? 8 : 0) | (q.rest > 0 ? 16 : 0) | (q.key >= 0 ? 32 : 0) | (q.esc ? 64 : 0);
+        if (forMom && q.hide >= 0) P.push([q.id, 0, 0, 0, 0, 1]);
+        else P.push([q.id, r2(q.x), r2(q.y), r2(q.z), r2(q.a), fl]);
+      }
+      return P;
+    };
+    const base = { type: 'snap', ph: this.ph, t: Math.max(0, Math.round(this.t * 10) / 10), H: this.holeT.map(t => Math.max(0, Math.ceil((t - now) / 1000))), D: this.doorOpen ? 1 : 0, need: this.needed() };
+    const momRows = rows(true), mouseRows = rows(false), Km = this.keyRows(true), Kq = this.keyRows(false);
+    const occ = []; for (const q of this.P.values()) if (q.hide >= 0 && !q.gone) occ.push(q.hide);
+    for (const q of this.P.values()) {
+      if (q.gone || q.bot) continue;
+      const mom = q.role === 'mom';
+      const o = Object.assign({}, base, { P: mom ? momRows : mouseRows, K: mom ? Km : Kq });
+      if (mom) { o.st = q.stam; o.vac = Math.max(0, Math.ceil((q.vac - now) / 1000)); o.rest = r2(q.rest); }
+      else { o.O = occ; if (q.hide >= 0) o.hs = Math.floor(q.hideT); }
+      this.to(q.id, o);
+    }
+  }
+  checkEnd() {
+    if (this.ended) return;
+    const mice = this.mice.filter(q => !q.gone), moms = this.moms.filter(q => !q.gone);
+    if (!this.practice && !moms.length) { this.end('mouse', '엄마가 다 나갔어요'); return; }
+    if (!mice.length) { if (!this.practice) this.end('mom', '쥐가 다 나갔어요'); return; }
+    const esc = mice.filter(q => q.esc).length, need = this.needed();
+    if (esc >= need) { this.end('mouse'); return; }
+    const left = mice.filter(q => !q.esc);
+    if (left.length && left.every(q => q.caught)) this.end('mom', esc ? `${esc}마리만 탈출했어요` : '');
+    else if (esc + left.length < need) this.end('mom');
+  }
+  end(win, why) {
+    if (this.ended) return;
+    this.ended = true;
+    const res = {
+      type: 'end', win, why: why || '', needed: this.needed(), keysIn: this.keysIn(), practice: this.practice,
+      mice: this.mice.map(t => ({ id: t.id, name: t.name, bot: t.bot, caught: t.caught, esc: t.esc, gone: t.gone, surv: Math.round(t.stat.surv), keysIn: t.stat.keysIn, rescues: t.stat.rescues, caughtN: t.stat.caughtN, place: t.caught ? t.lastPlace : placeName(t.x, t.y, t.z) })),
+      moms: this.moms.map(m => ({ id: m.id, name: m.name, catches: m.stat.catches, miss: m.stat.miss, opens: m.stat.opens }))
+    };
+    this.result = res;
+    this.out(res);
+    if (this.onEnd) this.onEnd(res);
+  }
 }

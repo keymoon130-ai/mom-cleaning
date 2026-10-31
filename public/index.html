@@ -105,16 +105,16 @@ label.sel{display:flex;flex-direction:column;font-size:13px;color:var(--dim);gap
   <div class="me" id="meTag"></div>
   <div class="wrap">
     <h1 class="title" id="ttl"></h1>
-    <p class="sub">장난감들아 <b>각오해^^</b></p>
+    <p class="sub">쥐들아 <b>각오해^^</b></p>
     <div class="menu">
       <button class="btn big pk" id="mQuick">🏃 빠른 참가</button>
       <button class="btn mt" id="mCreate">🏠 방 만들기</button>
       <button class="btn sk" id="mCode">🔑 코드로 참가</button>
       <button class="btn yl" id="mEdit">💄 엄마 꾸미기</button>
-      <button class="btn" id="mPrac">🧸 혼자 연습하기</button>
+      <button class="btn" id="mPrac">🐭 혼자 연습하기</button>
       <button class="btn" id="mSet">⚙️ 설정</button>
     </div>
-    <div class="foot">엄마가 오기 전에 물건으로 변신해서 숨어요. 엄마는 다 치워 버려요.</div>
+    <div class="foot">쥐는 열쇠 3개를 찾아 현관문으로 탈출! 엄마는 쥐를 잡아 쥐장에 가둬요.</div>
   </div>
 </section>
 
@@ -124,7 +124,6 @@ label.sel{display:flex;flex-direction:column;font-size:13px;color:var(--dim);gap
     <div class="hd"><button class="btn sm" data-back>← 뒤로</button><h2>공개방 찾기</h2><button class="btn sm" id="qRefresh">🔄 새로고침</button></div>
     <div class="card">
       <div class="row">
-        <label class="sel grow">맵<select id="fMap"><option value="">전부</option><option value="room">아이 방</option><option value="kitchen">부엌</option><option value="attic">다락방</option><option value="random">무작위</option></select></label>
         <label class="sel grow">엄마 수<select id="fMoms"><option value="">전부</option><option value="1">엄마 1명</option><option value="2">엄마 2명</option></select></label>
         <label class="sel grow">최대 인원<select id="fMax"><option value="">전부</option><option value="6">6명 이하</option><option value="8">8명 이하</option><option value="10">10명</option></select></label>
       </div>
@@ -157,19 +156,11 @@ label.sel{display:flex;flex-direction:column;font-size:13px;color:var(--dim);gap
         <div class="card" id="lSettings">
           <b style="font-size:20px">방 설정</b> <span class="hint" id="lSetHint"></span>
           <div class="setg">
-            <label class="sel">맵<select id="sMap"><option value="random">무작위</option><option value="room">아이 방</option><option value="kitchen">부엌</option><option value="attic">다락방</option></select></label>
             <label class="sel">엄마 수<select id="sMoms"><option value="1">1명</option><option value="2">2명</option></select></label>
             <label class="sel">최대 인원<select id="sMax"></select></label>
             <label class="sel">방 이름<input type="text" id="sName" maxlength="16"></label>
           </div>
           <label class="sw"><input type="checkbox" id="sPub"> 공개방 (빠른 참가 목록에 보여요)</label>
-          <div style="margin-top:10px;font-size:16px">🎲 추가 모드 <span class="hint">장난감에게 티가 나요</span></div>
-          <div class="modes">
-            <label class="sw" title="변신한 장난감이 10초마다 0.3초 동안 눈을 떠요"><input type="checkbox" id="mBlink"> 👀 눈 깜빡</label>
-            <label class="sw" title="얼음 중에도 아주 살짝 커졌다 작아졌다 해요"><input type="checkbox" id="mBreath"> 😮‍💨 숨쉬기</label>
-            <label class="sw" title="삑! 소리가 30초 → 20초마다 나요"><input type="checkbox" id="mSqFast"> 📢 삑! 자주</label>
-            <label class="sw" title="얼음은 최대 20초, 풀리면 5초 동안 다시 못 해요"><input type="checkbox" id="mFzLimit"> 🧊 얼음 제한</label>
-          </div>
         </div>
         <div class="card">
           <div class="chat" id="lChat"></div>
@@ -202,24 +193,12 @@ label.sel{display:flex;flex-direction:column;font-size:13px;color:var(--dim);gap
 
 <!-- 혼자 연습 -->
 <div class="modal" id="mdPrac"><div class="card">
-  <h2>🧸 혼자 연습하기</h2>
-  <div class="opt"><span>맵</span><select id="pMap" class="grow"><option value="room">아이 방</option><option value="kitchen">부엌</option><option value="attic">다락방</option></select></div>
+  <h2>🐭 혼자 연습하기</h2>
   <div class="row" style="margin:8px 0">
-    <label class="sw grow btn sm" style="box-shadow:none"><input type="radio" name="pRole" value="toy"> 🧸 장난감 연습</label>
+    <label class="sw grow btn sm" style="box-shadow:none"><input type="radio" name="pRole" value="mouse"> 🐭 쥐 연습</label>
     <label class="sw grow btn sm" style="box-shadow:none"><input type="radio" name="pRole" value="mom"> 🧹 엄마 연습</label>
   </div>
-  <div id="pMomOpt" class="row" style="margin:6px 0">
-    <label class="sel grow">봇 장난감<select id="pBots"><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
-    <label class="sel grow">난이도<select id="pDiff"><option value="easy">쉬움 (흔들흔들, 가끔 이사)</option><option value="hard">어려움 (같은 물건 옆에서 얼음)</option></select></label>
-  </div>
   <div id="pRoleHint" class="hint"></div>
-  <div style="margin-top:10px;font-size:16px">🎲 추가 모드</div>
-  <div class="modes">
-    <label class="sw"><input type="checkbox" id="pBlink"> 👀 눈 깜빡</label>
-    <label class="sw"><input type="checkbox" id="pBreath"> 😮‍💨 숨쉬기</label>
-    <label class="sw"><input type="checkbox" id="pSqFast"> 📢 삑! 자주</label>
-    <label class="sw"><input type="checkbox" id="pFzLimit"> 🧊 얼음 제한</label>
-  </div>
   <div class="row" style="margin-top:14px"><button type="button" class="btn grow" data-close>취소</button><button type="button" class="btn pk grow" id="pGo">시작!</button></div>
 </div></div>
 
@@ -240,6 +219,6 @@ label.sel{display:flex;flex-direction:column;font-size:13px;color:var(--dim);gap
   <button class="btn pk" id="oDone" style="width:100%">닫기</button>
 </div></div>
 
-<script type="module" src="app.js?v=13"></script>
+<script type="module" src="app.js?v=20"></script>
 </body>
 </html>

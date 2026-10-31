@@ -1,6 +1,6 @@
 // 엄마의 대청소날~ — 방 서버 (Cloudflare Workers + Durable Objects)
 // Room: 방 하나. Lobby: 공개방 목록 (하나뿐)
-import { CFG, OBJ, MAPS, MAP_IDS, genWorld, speedOf, lookValid, roomName, formReach, PROTO, BAL } from '../public/shared.js';
+import { CFG, lookValid, PROTO, BAL, Sim } from '../public/shared.js';
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type' };
@@ -77,7 +77,7 @@ export class Room {
     this.inited = false; this.code = '';
     this.players = new Map(); this.order = [];
     this.host = null; this.banned = new Set();
-    this.settings = { map: 'random', moms: 1, max: 8, pub: false, name: '', blink: false, breath: false, sqFast: false, fzLimit: false };
+    this.settings = { map: 'house', moms: 1, max: 8, pub: false, name: '' };
     this.phase = 'lobby'; this.g = null; this.loop = null; this.backT = null;
     this.listed = false; this.postT = null; this.beat = null;
   }
@@ -141,7 +141,7 @@ export class Room {
     const live = s.pub && this.players.size > 0 && [...this.players.values()].some(p => p.on);
     if (!live && !this.listed) return;
     const body = live
-      ? { code: this.code, name: s.name || '이름 없는 집', host: hostP ? hostP.name : '?', n: this.players.size, max: s.max, map: s.map, moms: s.moms, phase: this.phase, modes: ['blink', 'breath', 'sqFast', 'fzLimit'].filter(k => s[k]) }
+      ? { code: this.code, name: s.name || '이름 없는 집', host: hostP ? hostP.name : '?', n: this.players.size, max: s.max, map: s.map, moms: s.moms, phase: this.phase, modes: [] }
       : { code: this.code, del: 1 };
     this.listed = !!live;
     lobbyStub(this.env).fetch('https://lobby/put', { method: 'POST', body: JSON.stringify(body) }).catch(() => {});
@@ -157,7 +157,7 @@ export class Room {
     p.ws = null; p.on = false; p.offAt = Date.now();
     if (p.left) { // 스스로 나감
       if (this.phase === 'lobby' || !this.g || !this.g.P.has(p.id)) this.removePlayer(p);
-      else { const gp = this.g.P.get(p.id); if (gp.role === 'mom') this.momGone(p); else { gp.gone = true; this.checkEnd(); } }
+      else { const gp = this.g.P.get(p.id); if (gp.role === 'mom') this.g.momGone(p.id); else this.g.mouseGone(p.id); }
       this.sys(`${p.name} 님이 나갔어요.`);
     } else if (this.phase === 'lobby') {
       this.sys(`${p.name} 님의 연결이 끊겼어요. 15초 안에 돌아오면 그대로예요.`);
@@ -189,14 +189,14 @@ export class Room {
     const wasListed = this.listed; this.settings.pub = false;
     if (wasListed) this.post();
     this.players.clear(); this.order = []; this.host = null; this.g = null; this.phase = 'lobby'; this.inited = false; this.banned.clear();
-    this.settings = { map: 'random', moms: 1, max: 8, pub: false, name: '', blink: false, breath: false, sqFast: false, fzLimit: false };
+    this.settings = { map: 'house', moms: 1, max: 8, pub: false, name: '' };
   }
 
   cantStart() {
     const ps = [...this.players.values()];
     if (ps.length < 2) return '두 명 이상 있어야 시작할 수 있어요.';
     if (ps.some(p => !p.on)) return '연결이 끊긴 사람이 있어요. 잠깐만 기다려 주세요.';
-    if (ps.length <= this.settings.moms) return '엄마 수보다 장난감이 많아야 해요.';
+    if (ps.length <= this.settings.moms) return '엄마 수보다 쥐가 많아야 해요.';
     const notReady = ps.filter(p => p.id !== this.host && !p.ready);
     if (notReady.length) return `아직 준비 안 한 사람: ${notReady.map(p => p.name).join(', ')}`;
     return '';
@@ -238,12 +238,10 @@ export class Room {
       case 'set': {
         if (this.phase !== 'lobby' || p.id !== this.host) return;
         const s = this.settings;
-        if (m.map === 'random' || MAP_IDS.includes(m.map)) s.map = m.map;
         if (m.max) s.max = clamp(m.max | 0, Math.max(3, this.players.size), CFG.MAX_PLAYERS);
         if (m.moms) s.moms = clamp(m.moms | 0, 1, 2);
         if (typeof m.pub === 'boolean') s.pub = m.pub;
         if (typeof m.name === 'string') s.name = clean(m.name, 16) || s.name;
-        for (const k of ['blink', 'breath', 'sqFast', 'fzLimit']) if (typeof m[k] === 'boolean') s[k] = m[k];
         this.pushLobby();
         break;
       }
@@ -259,271 +257,54 @@ export class Room {
     }
   }
 
-  // ───────── 게임 ─────────
+  // ───────── 게임 (규칙은 shared.js 의 Sim) ─────────
   startGame() {
     const ps = this.order.map(i => this.players.get(i)).filter(Boolean);
-    const mapId = this.settings.map === 'random' ? MAP_IDS[Math.random() * MAP_IDS.length | 0] : this.settings.map;
-    const seed = Math.random() * 1e9 | 0;
-    const W = genWorld(mapId, seed), M = W.M;
-    // 엄마: 지원한 사람 중에서 먼저
     const pool = ps.slice().sort(() => Math.random() - .5);
     pool.sort((a, b) => (b.want ? 1 : 0) - (a.want ? 1 : 0));
     const moms = new Set(pool.slice(0, this.settings.moms).map(p => p.id));
-    const P = new Map(); let ti = 0;
-    for (const p of ps) {
-      const mom = moms.has(p.id);
-      const ang = ti * 2.4, rr = .35 + (ti % 3) * .2;
-      const [x, z] = mom ? [M.mom[0] + (P.size % 2) * .5, M.mom[1]] : [M.toy[0] + Math.cos(ang) * rr, M.toy[1] + Math.sin(ang) * rr];
-      if (!mom) ti++;
-      P.set(p.id, {
-        id: p.id, name: p.name, role: mom ? 'mom' : 'toy', x, z, a: mom ? 0 : Math.PI, form: null, fz: 0, mv: 0,
-        caught: false, caughtAt: 0, stam: CFG.STAMINA, rest: 0, regen: 0, vac: 0, formT: 0, grace: 0,
-        sqT: 30 * (.5 + Math.random() * .5), lastT: Date.now(), res: 0, resT: 0,
-        stat: { catches: 0, miss: 0, survived: 0, rescues: 0, caughtN: 0, forms: 0, vacs: 0 }, spot: null,
-        sqAt: 0, vacAt: 0, fTime: {}, fCaught: {}, cause: { sq: 0, vac: 0, look: 0 }
-      });
-    }
     this.phase = 'game';
-    const st = this.settings;
-    this.g = { mapId, seed, W, P, ph: 'prep', t: CFG.PREP, startAt: Date.now(), ended: false, log: [], sq: st.sqFast ? 20 : CFG.SQUEAK, modes: { blink: !!st.blink, breath: !!st.breath, sqFast: !!st.sqFast, fzLimit: !!st.fzLimit } };
+    const sim = new Sim({
+      seed: Math.random() * 1e9 | 0, modes: {},
+      players: ps.map(p => ({ id: p.id, name: p.name, role: moms.has(p.id) ? 'mom' : 'mouse' })),
+      emit: (to, m) => {
+        if (to === null) this.all(m); else { const pl = this.players.get(to); if (pl) this.send(pl, m); }
+        if (m.e === 'newmom') { const pl = this.players.get(m.id); this.all({ type: 'look', id: m.id, v: pl ? pl.look : null }); }
+      },
+      isOnline: id => { const pl = this.players.get(id); return !!(pl && pl.on); }
+    });
+    sim.onEnd = res => this.afterGame(res);
+    this.g = sim;
     for (const p of ps) { p.ready = false; }
     for (const p of ps) this.send(p, this.startMsg(p));
-    const last = Date.now(); this.g.prev = last;
     clearInterval(this.loop);
     this.loop = setInterval(() => { try { this.tick(); } catch (e) { console.log('tick', e && e.stack); } }, 1000 / 15);
     this.pushLobby();
   }
-
   startMsg(p) {
-    const g = this.g;
-    const roles = {}, names = {}, looks = {};
-    for (const q of g.P.values()) { roles[q.id] = q.role; names[q.id] = q.name; if (q.role === 'mom') { const pl = this.players.get(q.id); looks[q.id] = pl ? pl.look : null; } }
-    const me = g.P.get(p.id);
-    return { type: 'start', map: g.mapId, seed: g.seed, ph: g.ph, t: g.t, modes: g.modes, sq: g.sq, roles, names, looks, you: p.id, me: me && { x: me.x, z: me.z, a: me.a, form: me.form, caught: me.caught } };
+    const m = this.g.startMsg(p.id), looks = {};
+    for (const q of this.g.P.values()) if (q.role === 'mom') { const pl = this.players.get(q.id); looks[q.id] = pl ? pl.look : null; }
+    m.looks = looks;
+    return m;
   }
-
-  gameMsg(p, gp, m) {
-    const g = this.g, now = Date.now();
-    switch (m.type) {
-      case 'st': {
-        if (gp.caught || gp.rest > 0) return;
-        if (g.ph === 'prep' && gp.role === 'mom') return;
-        let x = +m.x, z = +m.z; if (!Number.isFinite(x) || !Number.isFinite(z)) return;
-        const dt = Math.min(1, (now - gp.lastT) / 1000); gp.lastT = now;
-        const max = speedOf(gp.role, gp.form) * dt * 1.6 + .35, d = Math.hypot(x - gp.x, z - gp.z);
-        if (d > max) { const k = max / d; x = gp.x + (x - gp.x) * k; z = gp.z + (z - gp.z) * k; this.send(p, { type: 'fix', x: r2(x), z: r2(z) }); }
-        gp.x = clamp(x, 1, g.W.W - 1); gp.z = clamp(z, 1, g.W.H - 1);
-        if (Number.isFinite(+m.a)) gp.a = +m.a;
-        gp.fz = m.fz ? 1 : 0; gp.mv = m.mv ? 1 : 0;
-        break;
-      }
-      case 'form': {
-        if (gp.role !== 'toy' || gp.caught || now < gp.formT) return;
-        if (m.o === -1) { gp.form = null; }
-        else if (m.d !== undefined) { // 가구로 변신 (가장자리까지 거리)
-          const d = g.W.decor[m.d | 0]; if (!d) return;
-          const ex = Math.max(0, Math.abs(gp.x - d.x) - d.hw), ez = Math.max(0, Math.abs(gp.z - d.z) - d.hd);
-          if (Math.hypot(ex, ez) > CFG.FORM_R + .6) return;
-          gp.form = d.t; gp.stat.forms++;
-        } else {
-          const o = g.W.objs[m.o | 0]; if (!o || Math.hypot(o.x - gp.x, o.z - gp.z) > CFG.FORM_R + .6) return;
-          gp.form = o.t; gp.stat.forms++;
-        }
-        gp.formT = now + CFG.FORM_CD * 1000;
-        this.all({ type: 'ev', e: 'form', id: gp.id, f: gp.form });
-        break;
-      }
-      case 'grab': {
-        if (gp.role !== 'mom' || g.ph !== 'hunt' || gp.rest > 0) return;
-        if (now - (gp.grabT || 0) < 350) return; gp.grabT = now;
-        if (m.k === 'p') {
-          const t = g.P.get(String(m.id || ''));
-          if (t && t.role === 'toy' && !t.caught && now > t.grace && Math.hypot(t.x - gp.x, t.z - gp.z) < CFG.GRAB_RANGE + 1 + formReach(t.form)) { this.catchToy(gp, t); return; }
-        } else if (m.k !== 'o' && m.k !== 'd') return;
-        // 진짜 물건(또는 헛짚음) = 헛손질
-        gp.stat.miss++; gp.stam--; gp.regen = 0;
-        const ev = { type: 'ev', e: 'miss', id: gp.id }; if (m.k === 'd') ev.d = m.i | 0; else if (m.k === 'o') ev.i = m.i | 0;
-        if (gp.stam <= 0) { gp.rest = CFG.REST; gp.stam = 0; ev.rest = 1; }
-        this.all(ev);
-        break;
-      }
-      case 'vac': {
-        if (gp.role !== 'mom' || g.ph !== 'hunt' || gp.rest > 0 || now < gp.vac) return;
-        gp.vac = now + CFG.VAC_CD * 1000; gp.stat.vacs++;
-        const hit = [];
-        for (const t of g.P.values()) {
-          if (t.role !== 'toy' || t.caught) continue;
-          const d = Math.hypot(t.x - gp.x, t.z - gp.z);
-          if (d < CFG.VAC_R) { hit.push(t.id); t.sqT = g.sq; t.vacAt = now; const pl = this.players.get(t.id); if (pl) this.send(pl, { type: 'pull', x: r2(gp.x), z: r2(gp.z), k: r2(Math.min(.9, d - .6)) }); }
-        }
-        this.all({ type: 'ev', e: 'vac', id: gp.id, x: r2(gp.x), z: r2(gp.z), hit });
-        for (const id of hit) { const t = g.P.get(id); this.all({ type: 'ev', e: 'sq', id, x: r2(t.x), z: r2(t.z), v: 1 }); }
-        break;
-      }
-      case 'res': { // 상자 구출 (누르고 있는 동안 계속 온다)
-        if (gp.role !== 'toy' || gp.caught || g.ph !== 'hunt') return;
-        const M = g.W.M;
-        if (Math.hypot(gp.x - M.box[0], gp.z - M.box[1]) > CFG.RESCUE_R + .5) return;
-        if (![...g.P.values()].some(t => t.caught)) return;
-        if (now - gp.resT > 600) gp.res = 0;
-        gp.res += Math.min(.4, (now - (gp.resT || now)) / 1000); gp.resT = now;
-        this.all({ type: 'ev', e: 'resp', id: gp.id, v: r2(gp.res / CFG.RESCUE) });
-        if (gp.res >= CFG.RESCUE) { gp.res = 0; this.rescue(gp); }
-        break;
-      }
-      case 'sign': {
-        if (gp.role !== 'toy') return;
-        const x = +m.x, z = +m.z;
-        if (!Number.isFinite(x) || !Number.isFinite(z) || now - (gp.pingT || 0) < 2500) return;
-        gp.pingT = now;
-        const o = JSON.stringify({ type: 'sign', a: p.id, x: r2(x), z: r2(z) });
-        for (const q of g.P.values()) if (q.role === 'toy') { const pl = this.players.get(q.id); if (pl) this.send(pl, o); }
-        break;
-      }
-    }
-  }
-
-  catchToy(mom, t) {
-    const g = this.g, M = g.W.M;
-    const now = Date.now();
-    const cause = now - t.vacAt < 5000 ? 'vac' : now - t.sqAt < 5000 ? 'sq' : 'look';
-    t.cause[cause]++; const fk = t.form || '-'; t.fCaught[fk] = (t.fCaught[fk] || 0) + 1;
-    t.caught = true; t.caughtAt = now; t.stat.caughtN++;
-    t.spot = t.spot || { x: r2(t.x), z: r2(t.z), f: t.form, room: roomName(M, t.x, t.z) };
-    t.lastSpot = { x: r2(t.x), z: r2(t.z), f: t.form, room: roomName(M, t.x, t.z) };
-    t.form = null; t.x = M.box[0]; t.z = M.box[1];
-    mom.stat.catches++;
-    this.all({ type: 'ev', e: 'caught', id: t.id, by: mom.id, x: t.lastSpot.x, z: t.lastSpot.z, f: t.lastSpot.f });
-    this.checkEnd();
-  }
-
-  rescue(by) {
-    const g = this.g, M = g.W.M, now = Date.now();
-    const freed = [];
-    let k = 0;
-    for (const t of g.P.values()) if (t.caught) {
-      t.caught = false; t.grace = now + CFG.GRACE * 1000; t.form = null;
-      const a = k++ * 1.9; t.x = M.box[0] + Math.cos(a) * .9; t.z = M.box[1] + Math.sin(a) * .9; t.lastT = now;
-      freed.push(t.id);
-      const pl = this.players.get(t.id); if (pl) this.send(pl, { type: 'fix', x: r2(t.x), z: r2(t.z) });
-    }
-    by.stat.rescues++;
-    this.all({ type: 'ev', e: 'rescue', id: by.id, freed });
-  }
-
-  // 엄마가 나가면 장난감 하나가 엄마가 된다
-  momGone(pl) {
-    const g = this.g; if (!g || g.ended) return;
-    const gp = g.P.get(pl.id); if (!gp || gp.role !== 'mom' || gp.gone) return;
-    gp.gone = true;
-    const momsLeft = [...g.P.values()].filter(q => q.role === 'mom' && !q.gone);
-    if (momsLeft.length) return;
-    const cands = [...g.P.values()].filter(q => q.role === 'toy' && !q.gone && this.players.get(q.id) && this.players.get(q.id).on);
-    if (cands.length < 2) { this.checkEnd(true); return; }
-    const free = cands.filter(q => !q.caught);
-    const nm = (free.length ? free : cands)[Math.random() * (free.length || cands.length) | 0];
-    nm.role = 'mom'; nm.caught = false; nm.form = null; nm.x = g.W.M.mom[0]; nm.z = g.W.M.mom[1]; nm.stam = CFG.STAMINA; nm.rest = 0;
-    const npl = this.players.get(nm.id);
-    this.all({ type: 'ev', e: 'newmom', id: nm.id, old: gp.id, look: npl ? npl.look : null });
-    if (npl) this.send(npl, { type: 'fix', x: nm.x, z: nm.z });
-    this.checkEnd();
-  }
-
+  gameMsg(p, gp, m) { this.g.msg(p.id, m); }
+  momGone(pl) { if (this.g) this.g.momGone(pl.id); }
   tick() {
     const g = this.g; if (!g || g.ended) return;
-    const now = Date.now(), dt = Math.min(.5, (now - g.prev) / 1000); g.prev = now;
-    g.t -= dt;
-    if (g.ph === 'prep' && g.t <= 0) {
-      g.ph = 'hunt'; g.t = CFG.HUNT;
-      for (const q of g.P.values()) { q.lastT = now; if (q.role === 'toy') q.sqT = g.sq * (.4 + Math.random() * .6); }
-      this.all({ type: 'ev', e: 'hunt' });
-    }
+    const now = Date.now();
     // 엄마 오래 끊김 → 교대
     for (const q of g.P.values()) {
       const pl = this.players.get(q.id);
-      if (q.role === 'mom' && !q.gone && (!pl || (!pl.on && now - pl.offAt > CFG.MOM_OFF_SWAP * 1000))) this.momGone(pl || { id: q.id });
+      if (q.role === 'mom' && !q.gone && (!pl || (!pl.on && now - pl.offAt > CFG.MOM_OFF_SWAP * 1000))) g.momGone(q.id);
     }
-    if (g.ended) return;
-    if (g.ph === 'hunt') {
-      for (const q of g.P.values()) {
-        if (q.role === 'mom') {
-          if (q.rest > 0) { q.rest -= dt; if (q.rest <= 0) { q.rest = 0; q.stam = CFG.STAMINA; this.all({ type: 'ev', e: 'up', id: q.id }); } }
-          else if (q.stam < CFG.STAMINA) { q.regen += dt; if (q.regen >= CFG.STAM_REGEN) { q.regen = 0; q.stam++; } }
-        } else if (!q.caught) {
-          q.stat.survived += dt;
-          const fk = q.form || '-'; q.fTime[fk] = (q.fTime[fk] || 0) + dt;
-          q.sqT -= dt;
-          if (q.sqT <= 0) { q.sqT = g.sq; q.sqAt = now; this.all({ type: 'ev', e: 'sq', id: q.id, x: r2(q.x), z: r2(q.z) }); }
-        }
-      }
-      if (g.t <= 0) { this.endGame('toy'); return; }
-    }
-    // 스냅샷: [id, x, z, a, form, flags(1 얼음, 2 움직임, 4 잡힘, 8 무적, 16 쉼)]
-    const P = [];
-    for (const q of g.P.values()) if (!q.gone) P.push([q.id, r2(q.x), r2(q.z), r2(q.a), q.form, (q.fz ? 1 : 0) | (q.mv ? 2 : 0) | (q.caught ? 4 : 0) | (now < q.grace ? 8 : 0) | (q.rest > 0 ? 16 : 0)]);
-    for (const q of g.P.values()) {
-      const pl = this.players.get(q.id); if (!pl || !pl.ws) continue;
-      const o = { type: 'snap', ph: g.ph, t: Math.max(0, Math.round(g.t * 10) / 10), P };
-      if (q.role === 'mom') { o.st = q.stam; o.vac = Math.max(0, Math.ceil((q.vac - now) / 1000)); o.rest = r2(q.rest); }
-      else o.sq = Math.max(0, Math.round(q.sqT));
-      this.send(pl, o);
-    }
-    // 게임 중 들어온 적 없는 관전자(로비에 남은 사람)는 없음
+    if (!g.ended) g.tick();
   }
-
-  checkEnd(noMom) {
-    const g = this.g; if (!g || g.ended) return;
-    const toys = [...g.P.values()].filter(q => q.role === 'toy' && !q.gone);
-    const moms = [...g.P.values()].filter(q => q.role === 'mom' && !q.gone);
-    if (noMom || !moms.length) { this.endGame('toy', '엄마가 다 나갔어요'); return; }
-    if (!toys.length) { this.endGame('mom', '장난감이 다 나갔어요'); return; }
-    if (toys.every(q => q.caught)) this.endGame('mom');
-  }
-
-  // 판 결과를 기록 (이름은 저장하지 않음)
-  record(win, why) {
-    try {
-      const g = this.g;
-      if (g.ph !== 'hunt') return; // 준비 중에 끝난 판은 기록 안 함
-      const toys = [...g.P.values()].filter(q => q.role === 'toy');
-      const moms = [...g.P.values()].filter(q => q.role === 'mom');
-      const sum = (arr, f) => arr.reduce((a, q) => a + f(q), 0);
-      const forms = {};
-      for (const t of toys) {
-        for (const [k, v] of Object.entries(t.fTime)) { (forms[k] = forms[k] || [0, 0])[0] += v; }
-        for (const [k, v] of Object.entries(t.fCaught)) { (forms[k] = forms[k] || [0, 0])[1] += v; }
-      }
-      for (const k in forms) forms[k][0] = Math.round(forms[k][0]);
-      const d = {
-        bal: BAL, pv: PROTO, map: g.mapId, moms: moms.length, toys: toys.length,
-        modes: Object.keys(g.modes).filter(k => g.modes[k]),
-        win, why: why || '', ph: g.ph,
-        left: g.ph === 'hunt' ? Math.max(0, Math.round(g.t)) : CFG.HUNT,
-        alive: toys.filter(t => !t.caught && !t.gone).length,
-        surv: toys.map(t => Math.round(t.stat.survived)),
-        catches: sum(toys, t => t.stat.caughtN), rescues: sum(toys, t => t.stat.rescues),
-        miss: sum(moms, m => m.stat.miss), vacs: sum(moms, m => m.stat.vacs || 0),
-        cause: { sq: sum(toys, t => t.cause.sq), vac: sum(toys, t => t.cause.vac), look: sum(toys, t => t.cause.look) },
-        forms
-      };
-      statsStub(this.env).fetch('https://stats/add', { method: 'POST', body: JSON.stringify(d) }).catch(() => {});
-    } catch (e) { console.log('record', e && e.stack); }
-  }
-
-  endGame(win, why) {
-    const g = this.g; if (!g || g.ended) return;
-    g.ended = true; clearInterval(this.loop); this.loop = null;
-    const M = g.W.M;
-    const toys = [...g.P.values()].filter(q => q.role === 'toy');
-    const moms = [...g.P.values()].filter(q => q.role === 'mom');
-    const res = {
-      type: 'end', win, why: why || '', map: g.mapId,
-      toys: toys.map(t => ({ id: t.id, name: t.name, caught: t.caught, surv: Math.round(t.stat.survived), rescues: t.stat.rescues, caughtN: t.stat.caughtN,
-        spot: t.caught ? t.lastSpot : { x: r2(t.x), z: r2(t.z), f: t.form, room: roomName(M, t.x, t.z) } })),
-      moms: moms.map(m => ({ id: m.id, name: m.name, catches: m.stat.catches, miss: m.stat.miss, look: (this.players.get(m.id) || {}).look || null }))
-    };
-    this.all(res);
-    this.record(win, why);
+  checkEnd() { if (this.g) this.g.checkEnd(); }
+  afterGame(res) {
+    clearInterval(this.loop); this.loop = null;
+    // 결과 화면용 엄마 모습
+    for (const m of res.moms) m.look = (this.players.get(m.id) || {}).look || null;
+    this.record(res);
     clearTimeout(this.backT);
     this.backT = setTimeout(() => {
       this.phase = 'lobby'; this.g = null;
@@ -532,5 +313,21 @@ export class Room {
       this.all({ type: 'back' });
       this.pushLobby();
     }, 14000);
+  }
+  // 판 결과를 기록 (이름은 저장하지 않음)
+  record(res) {
+    try {
+      const g = this.g; if (!g || g.ph !== 'hunt') return;
+      const mice = g.mice, moms = g.moms, sum = (a, f) => a.reduce((s, q) => s + f(q), 0);
+      const d = {
+        bal: BAL, pv: PROTO, map: 'house', moms: moms.length, toys: mice.length, modes: Object.keys(g.modes).filter(k => g.modes[k]),
+        win: res.win === 'mouse' ? 'toy' : 'mom', why: res.why || '', ph: g.ph, left: Math.max(0, Math.round(g.t)),
+        alive: mice.filter(q => q.esc).length, esc: mice.filter(q => q.esc).length, need: res.needed, keysIn: res.keysIn,
+        surv: mice.map(t => Math.round(t.stat.surv)),
+        catches: sum(mice, t => t.stat.caughtN), rescues: sum(mice, t => t.stat.rescues),
+        miss: sum(moms, m => m.stat.miss), opens: sum(moms, m => m.stat.opens), hides: sum(mice, t => t.stat.hides), holes: sum(mice, t => t.stat.holes)
+      };
+      statsStub(this.env).fetch('https://stats/add', { method: 'POST', body: JSON.stringify(d) }).catch(() => {});
+    } catch (e) { console.log('record', e && e.stack); }
   }
 }

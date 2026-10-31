@@ -1,8 +1,8 @@
 // 엄마의 대청소날~ — 화면 흐름 · 접속 · 대기실
-import { PROTO, MAPS, CFG } from './shared.js?v=13';
-import { audioInit, setVol, S, bgm } from './sfx.js?v=13';
-import { Editor, loadLook, saveLook } from './editor.js?v=13';
-import { Game } from './game.js?v=13';
+import { PROTO, MAPS, CFG } from './shared.js?v=20';
+import { audioInit, setVol, S, bgm } from './sfx.js?v=20';
+import { Editor, loadLook, saveLook } from './editor.js?v=20';
+import { Game } from './game.js?v=20';
 
 const $ = id => document.getElementById(id);
 const LS = {
@@ -10,7 +10,7 @@ const LS = {
   set(k, v) { try { localStorage.setItem('mc_' + k, JSON.stringify(v)); } catch (e) {} }
 };
 const isPhone = matchMedia('(pointer:coarse)').matches;
-const MAPN = { random: '무작위', room: '아이 방', kitchen: '부엌', attic: '다락방' };
+const MAPN = { house: '우리 집' };
 
 // ───────── 내 정보 · 설정 ─────────
 let myId = LS.get('id', null);
@@ -122,9 +122,9 @@ async function createRoom(pub = false) {
 
 // ───────── 빠른 참가 (공개방 목록) ─────────
 let qTimer = null;
-const F = Object.assign({ map: '', moms: '', max: '' }, LS.get('filter', {}));
-$('fMap').value = F.map; $('fMoms').value = F.moms; $('fMax').value = F.max;
-for (const k of ['Map', 'Moms', 'Max']) $('f' + k).onchange = () => { F[k.toLowerCase()] = $('f' + k).value; LS.set('filter', F); loadRooms(); };
+const F = Object.assign({ moms: '', max: '' }, LS.get('filter', {}));
+$('fMoms').value = F.moms; $('fMax').value = F.max;
+for (const k of ['Moms', 'Max']) $('f' + k).onchange = () => { F[k.toLowerCase()] = $('f' + k).value; LS.set('filter', F); loadRooms(); };
 $('qRefresh').onclick = () => { S.click(); loadRooms(); };
 function startQuick() { loadRooms(); clearInterval(qTimer); qTimer = setInterval(loadRooms, 3000); }
 function stopQuick() { clearInterval(qTimer); qTimer = null; }
@@ -132,7 +132,7 @@ async function loadRooms() {
   let rooms;
   try { rooms = (await (await fetch('/api/rooms', { cache: 'no-store' })).json()).rooms || []; }
   catch (e) { $('qInfo').textContent = '목록을 못 불러왔어요. 잠시 후 다시 해 볼게요.'; return; }
-  rooms = rooms.filter(r => (!F.map || r.map === F.map) && (!F.moms || String(r.moms) === F.moms) &&
+  rooms = rooms.filter(r => (!F.moms || String(r.moms) === F.moms) &&
     (!F.max || (F.max === '10' ? r.max >= 9 : r.max <= +F.max)));
   const L = $('qList'); L.textContent = '';
   if (!rooms.length) {
@@ -144,7 +144,7 @@ async function loadRooms() {
     const d = document.createElement('div'); d.className = 'room';
     d.innerHTML = `<div class="grow"><div class="nm"></div><div class="inf"></div></div><div class="cnt"></div>`;
     d.querySelector('.nm').textContent = r.name;
-    d.querySelector('.inf').textContent = `방장 ${r.host} · ${MAPN[r.map] || r.map} · 엄마 ${r.moms}명${(r.modes || []).length ? ' · ' + r.modes.map(k => (MODES.find(m => m[1] === k) || [])[2] || '').join('') : ''}`;
+    d.querySelector('.inf').textContent = `방장 ${r.host} · 엄마 ${r.moms}명${(r.modes || []).length ? ' · ' + r.modes.map(k => (MODES.find(m => m[1] === k) || [])[2] || '').join('') : ''}`;
     d.querySelector('.cnt').textContent = `${r.n} / ${r.max}`;
     d.onclick = () => { S.click(); join(r.code, false, { onErr: (m, k) => { toast(k === 'full' ? '방이 꽉 찼어요.' : m); loadRooms(); } }); };
     L.append(d);
@@ -237,11 +237,10 @@ $('lCode').onclick = () => { if (!lobby) return; navigator.clipboard && navigato
 $('lReady').onclick = () => { S.click(); const me = lobby && lobby.players.find(p => p.id === myId); send({ type: 'ready', v: !(me && me.ready) }); };
 $('lWant').onclick = () => { S.click(); const me = lobby && lobby.players.find(p => p.id === myId); send({ type: 'want', v: !(me && me.want) }); };
 $('lStart').onclick = () => { S.click(); send({ type: 'start' }); };
-$('sMap').onchange = () => send({ type: 'set', map: $('sMap').value });
 $('sMoms').onchange = () => send({ type: 'set', moms: +$('sMoms').value });
 $('sMax').onchange = () => send({ type: 'set', max: +$('sMax').value });
 $('sPub').onchange = () => send({ type: 'set', pub: $('sPub').checked });
-const MODES = [['mBlink', 'blink', '👀'], ['mBreath', 'breath', '😮‍💨'], ['mSqFast', 'sqFast', '📢'], ['mFzLimit', 'fzLimit', '🧊']];
+const MODES = []; // 추가 모드 (쥐덫 · 고양이는 나중에)
 for (const [id, k] of MODES) $(id).onchange = () => send({ type: 'set', [k]: $(id).checked });
 $('sName').onchange = () => send({ type: 'set', name: $('sName').value });
 $('lChatF').onsubmit = e => { e.preventDefault(); const t = $('lChatIn').value.trim(); if (!t) return; send({ type: 'chat', text: t }); $('lChatIn').value = ''; };
@@ -252,7 +251,7 @@ function drawLobby() {
   $('lName').textContent = '🏠 ' + (s.name || '이름 없는 집');
   $('lCode').textContent = L.code;
   $('lCount').textContent = `${L.players.length} / ${s.max}`;
-  $('lMapInfo').textContent = `${MAPN[s.map]} · 엄마 ${s.moms}명 · ${s.pub ? '공개방' : '비공개방'}${MODES.some(m => s[m[1]]) ? ' · ' + MODES.filter(m => s[m[1]]).map(m => m[2]).join('') : ''}`;
+  $('lMapInfo').textContent = `엄마 ${s.moms}명 · ${s.pub ? '공개방' : '비공개방'}${MODES.some(m => s[m[1]]) ? ' · ' + MODES.filter(m => s[m[1]]).map(m => m[2]).join('') : ''}`;
   const box = $('lPlayers'); box.textContent = '';
   for (const p of L.players) {
     const d = document.createElement('div'); d.className = 'pl';
@@ -280,15 +279,15 @@ function drawLobby() {
   // 시작 못 하는 이유
   let why = '';
   if (L.players.length < 2) why = '두 명 이상 있어야 시작할 수 있어요.';
-  else if (L.players.length <= s.moms) why = '엄마 수보다 장난감이 많아야 해요.';
+  else if (L.players.length <= s.moms) why = '엄마 수보다 쥐가 많아야 해요.';
   else if (L.players.some(p => !p.on)) why = '연결이 끊긴 사람이 있어요.';
   else { const nr = L.players.filter(p => p.id !== L.host && !p.ready); if (nr.length) why = `준비 기다리는 중: ${nr.map(p => p.name).join(', ')}`; }
   $('lStart').disabled = !!why;
   $('lWhy').textContent = isHost ? why : (me.ready ? '방장이 시작하길 기다리는 중…' : '준비를 눌러 주세요!');
   // 설정 (방장만 바꿈)
-  for (const id of ['sMap', 'sMoms', 'sMax', 'sName', 'sPub', 'mBlink', 'mBreath', 'mSqFast', 'mFzLimit']) $(id).disabled = !isHost;
+  for (const id of ['sMoms', 'sMax', 'sName', 'sPub']) $(id).disabled = !isHost;
   for (const [id, k] of MODES) $(id).checked = !!s[k];
-  $('sMap').value = s.map; $('sMoms').value = s.moms; $('sMax').value = s.max; $('sPub').checked = !!s.pub;
+  $('sMoms').value = s.moms; $('sMax').value = s.max; $('sPub').checked = !!s.pub;
   if (document.activeElement !== $('sName')) $('sName').value = s.name || '';
   $('lSetHint').textContent = isHost ? '' : '(방장만 바꿀 수 있어요)';
 }
@@ -308,23 +307,18 @@ function openEditor() {
 }
 
 // ───────── 혼자 연습 ─────────
-const PR = Object.assign({ map: 'room', role: 'toy', bots: 4, diff: 'easy', modes: {} }, LS.get('prac', {}));
-const PMODES = [['pBlink', 'blink'], ['pBreath', 'breath'], ['pSqFast', 'sqFast'], ['pFzLimit', 'fzLimit']];
+const PR = Object.assign({ role: 'mouse' }, LS.get('prac', {}));
+if (PR.role !== 'mom') PR.role = 'mouse';
 function pracSync() {
-  const role = (document.querySelector('input[name=pRole]:checked') || {}).value || 'toy';
-  $('pMomOpt').style.display = role === 'mom' ? '' : 'none';
-  $('pRoleHint').textContent = role === 'mom' ? '봇 장난감들이 숨어 있어요. 4분 안에 다 찾아 봐요!' : '자유롭게 변신해 보고, R(👀 엄마 시점)로 찾는 쪽에서 어떻게 보이는지 확인해요.';
+  const role = (document.querySelector('input[name=pRole]:checked') || {}).value || 'mouse';
+  $('pRoleHint').textContent = role === 'mom' ? '엄마 눈높이로 집을 둘러봐요. 서랍·찬장을 열어 볼 수 있어요. (봇 쥐는 곧 추가돼요)' : '열쇠 3개를 찾아 현관문에 꽂고 탈출해 봐요! 하나는 다락방에 있어요.';
 }
 function openPrac() {
-  $('pMap').value = PR.map; $('pBots').value = String(PR.bots); $('pDiff').value = PR.diff;
   for (const r of document.querySelectorAll('input[name=pRole]')) { r.checked = r.value === PR.role; r.onchange = pracSync; }
-  for (const [id, k] of PMODES) $(id).checked = !!PR.modes[k];
   pracSync(); modal('mdPrac');
 }
 $('pGo').onclick = () => {
-  PR.map = $('pMap').value; PR.role = (document.querySelector('input[name=pRole]:checked') || {}).value || 'toy';
-  PR.bots = +$('pBots').value; PR.diff = $('pDiff').value;
-  PR.modes = {}; for (const [id, k] of PMODES) PR.modes[k] = $(id).checked;
+  PR.role = (document.querySelector('input[name=pRole]:checked') || {}).value || 'mouse';
   LS.set('prac', PR); modal('mdPrac', false); S.click(); startPractice(PR);
 };
 function startPractice(o) {
@@ -335,7 +329,7 @@ function startPractice(o) {
 }
 
 // ───────── 설정 ─────────
-const KEYS_PC = [['WASD', '움직이기'], ['마우스', '둘러보기'], ['E', '장난감: 보고 있는 물건으로 변신 / 상자 앞에서 꾹 = 구출'], ['Q', '장난감: 원래 모습으로'], ['Shift', '장난감: 얼음 (안 흔들려요)'], ['G', '장난감: 여기 봐! 손짓 (장난감끼리만)'], ['클릭', '엄마: 치우기'], ['Space', '엄마: 청소기 (1분에 한 번)'], ['Tab', '내 역할 설명'], ['Enter', '채팅 (같은 편끼리)'], ['Esc', '마우스 풀기 / 메뉴']];
+const KEYS_PC = [['WASD', '움직이기'], ['마우스', '둘러보기'], ['Space', '쥐: 점프'], ['E', '쥐: 숨기·나가기 / 쥐구멍 / 쥐장 앞에서 꾹 = 구출'], ['G', '쥐: 여기 봐! 손짓 (쥐끼리만)'], ['클릭', '엄마: 쥐 잡기 · 서랍 열기'], ['우클릭 / F', '엄마: 청소기 (1분에 한 번)'], ['Tab', '내 역할 설명'], ['Enter', '채팅 (같은 편끼리)'], ['Esc', '마우스 풀기 / 메뉴']];
 $('keysBox').innerHTML = KEYS_PC.map(([k, v]) => `<div><b>${k}</b>${v}</div>`).join('') + '<div style="margin-top:6px">📱 폰: 왼쪽 드래그 = 이동, 오른쪽 드래그 = 둘러보기, 버튼으로 나머지</div>';
 function openSettings() {
   $('oName').value = name();

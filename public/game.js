@@ -179,7 +179,7 @@ export class Game {
     this.pitch = this.role === 'mom' ? -.15 : -.35; this.bodyYaw = this.yaw;
     this.frozen = false; this.stam = CFG.STAMINA; this.vacCd = 0; this.restT = 0; this.sqLeft = CFG.SQUEAK;
     this.spec = null;
-    this.banner(this.role === 'mom' ? '🧹 너는 엄마야!' : '🧸 너는 장난감이야!', this.role === 'mom' ? '30초 동안 단장하고, 장난감을 전부 치워!' : '엄마가 단장하는 30초 동안 물건으로 변신해서 숨어! (E)', 4.5);
+    this.banner(this.role === 'mom' ? '🧹 엄마 역할이에요!' : '🧸 장난감 역할이에요!', this.role === 'mom' ? '30초 동안 단장하고, 장난감을 전부 치워!' : '엄마가 단장하는 30초 동안 물건으로 변신해서 숨어! (E)', 4.5);
     if (this.ph === 'prep') this.enterPrep(); else this.enterHunt(true);
     bgm(this.ph === 'prep' ? 'title' : 'game');
   }
@@ -200,7 +200,7 @@ export class Game {
       this.role = 'toy'; this.tLeft = 0; this.yaw = Math.PI; this.pitch = -.35;
       this.P = new Map([['me', { id: 'me', name: '나', role: 'toy', x: M.toy[0], z: M.toy[1], a: 0, form: null, fl: 0, buf: [], col: toyColor(0), look: null }]]);
       this.sqF = this.sqPeriod; this.sqLeft = this.sqPeriod;
-      this.banner('🧸 장난감 연습', isPhone ? '변신해 보고, 👀 엄마 눈으로 어떻게 보이는지 확인해요' : 'E 변신 · Q 원래대로 · Shift 얼음 · R 엄마 눈으로 보기', 5);
+      this.banner('🧸 장난감 연습', isPhone ? '변신해 보고, 👀 엄마 시점으로 어떻게 보이는지 확인해요' : 'E 변신 · Q 원래대로 · Shift 얼음 · R 엄마 시점으로 보기', 5);
     }
     this.bodyYaw = this.yaw;
     bgm('game');
@@ -461,7 +461,7 @@ export class Game {
       vac: mkb('🌀 청소기', () => this.vacuum()),
       menu: mkb('☰', () => this.showMenu())
     };
-    if (this.practice && this.pracRole === 'toy') this.tb.eye = mkb('👀 엄마 눈', () => this.pracSwap());
+    if (this.practice && this.pracRole === 'toy') this.tb.eye = mkb('👀 엄마 시점', () => this.pracSwap());
     const help = document.createElement('button'); help.textContent = '? 설명';
     help.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);top:58px;z-index:3;font:15px Jua;padding:4px 12px;border-radius:12px;border:3px solid #4a2c1d;background:#fffaf0;color:#4a2c1d';
     help.onclick = () => { this.cardOn = !this.cardOn; this.drawCard(); }; this.root.append(help);
@@ -556,7 +556,7 @@ export class Game {
     if (this.isSpec()) { this.nextSpec(1); return; }
     if (this.role !== 'mom') return;
     if (this.practice && this.pracRole === 'mom') { if (!this.ended) this.pracGrab(); return; }
-    if (this.practice) { this.hand = 1; S.grab(); const pk = this.pick; if (pk && pk.k === 'p' && pk.d < CFG.GRAB_RANGE) { this.banner('찾았다!', '엄마 눈에는 이렇게 보여요', 2); S.caught(); } else if (pk && (pk.k === 'o' || pk.k === 'd') && pk.d < CFG.GRAB_RANGE) { const ob = pk.k === 'o' ? this.Wd.objs[pk.i] : this.Wd.decor[pk.i]; this.say('그건 진짜 ' + formInfo(ob.t).n + '이에요'); S.miss(); } return; }
+    if (this.practice) { this.hand = 1; S.grab(); const pk = this.pick; if (pk && pk.k === 'p' && pk.d < CFG.GRAB_RANGE) { this.banner('찾았다!', '엄마 시점에서는 이렇게 보여요', 2); S.caught(); } else if (pk && (pk.k === 'o' || pk.k === 'd') && pk.d < CFG.GRAB_RANGE) { const ob = pk.k === 'o' ? this.Wd.objs[pk.i] : this.Wd.decor[pk.i]; this.say('그건 진짜 ' + formInfo(ob.t).n + '이에요'); S.miss(); } return; }
     if (this.ph !== 'hunt') return;
     if (this.restT > 0) { this.say('헉헉… 쉬는 중'); return; }
     const pk = this.pick; this.hand = 1; S.grab();
@@ -579,7 +579,7 @@ export class Game {
       this.pracMom = true; this.role = 'mom';
       const [x, z] = collide(this.Wd, me.x, me.z, me.x - Math.cos(this.yaw) * 1.8, me.z - Math.sin(this.yaw) * 1.8); me.x = x; me.z = z;
       const b = this.P.get('body'); this.yaw = Math.atan2(b.z - me.z, b.x - me.x); this.pitch = -.45;
-      this.say('엄마 눈으로 보는 중 (R로 돌아가기, 클릭해 보기)');
+      this.say('엄마 시점으로 보는 중 (R로 돌아가기, 클릭해 보기)');
     } else {
       const b = this.P.get('body'); me.x = b.x; me.z = b.z; me.form = b.form; if (b.obj) this.world.remove(b.obj); this.P.delete('body');
       this.pracMom = false; this.role = 'toy'; this.pitch = -.35; this.say('다시 장난감으로');
@@ -918,7 +918,7 @@ export class Game {
     const on = Object.keys(ML).filter(k => this.modes && this.modes[k]);
     const extra = on.length ? `<div style="margin-top:8px;padding-top:6px;border-top:2px dashed #e0c9a8"><b>🎲 이번 판 추가 모드</b>${on.map(k => `<div>· ${ML[k]}</div>`).join('')}</div>` : '';
     c.innerHTML = (mom
-      ? `<div style="font-size:26px">🧹 너는 <b style="color:#ff6fa5">엄마</b></div>
+      ? `<div style="font-size:26px">🧹 내 역할: <b style="color:#ff6fa5">엄마</b></div>
 <div>· 수상한 물건을 <b>클릭</b>해서 치워요 (가까이 가야 손이 닿아요)</div>
 <div>· 진짜 물건을 짚으면 <b>헛손질</b> → 스펀지가 줄어요. 다 떨어지면 3초 쉬어요</div>
 <div>· <b>Space 청소기</b>: 1분에 한 번, 주변 장난감이 삑! 하고 끌려와요</div>
@@ -926,7 +926,7 @@ export class Game {
 <div>· 흔들흔들하는 물건은 수상해요</div>
 <div>· 잡힌 장난감은 <b>장난감 상자</b>로 가요. 상자를 지키면 좋아요</div>
 <div style="margin-top:6px">🏆 4분 안에 장난감을 <b>전부</b> 치우면 엄마 승리!</div>`
-      : `<div style="font-size:26px">🧸 너는 <b style="color:#3b8fd6">장난감</b></div>
+      : `<div style="font-size:26px">🧸 내 역할: <b style="color:#3b8fd6">장난감</b></div>
 <div>· <b>E</b>: 보고 있는 물건으로 변신 · <b>Q</b>: 원래 모습</div>
 <div>· 작은 물건은 빠르고, 큰 물건은 느려요</div>
 <div>· <b>Shift 얼음</b>: 흔들거림이 멈춰요 (못 움직여요)</div>
@@ -1066,7 +1066,7 @@ export class Game {
     if (!this.practice || this.pracRole === 'mom') {
       const lbl = this.practice ? `🧹 엄마 연습 · ${this.M.name}` : this.ph === 'prep' ? '💄 엄마 단장 중' : '🧹 청소 중';
       top = `<span style="background:${left <= 30 && this.ph === 'hunt' ? '#ff5a5a' : '#fffaf0'};color:${left <= 30 && this.ph === 'hunt' ? '#fff' : '#4a2c1d'};border:3px solid #4a2c1d;border-radius:14px;padding:4px 14px;font-size:24px">${lbl} ${mm}:${String(ss).padStart(2, '0')}</span>`;
-    } else top = `<span style="background:#fffaf0;color:#4a2c1d;border:3px solid #4a2c1d;border-radius:14px;padding:4px 14px;font-size:18px">🧸 연습 · ${this.M.name} · ${this.pracMom ? '엄마 눈' : '장난감'}</span>`;
+    } else top = `<span style="background:#fffaf0;color:#4a2c1d;border:3px solid #4a2c1d;border-radius:14px;padding:4px 14px;font-size:18px">🧸 연습 · ${this.M.name} · ${this.pracMom ? '엄마 시점' : '장난감'}</span>`;
     if (this._top !== top) { this._top = top; this.hTop.innerHTML = top; }
     let role;
     if (this.role === 'mom') {
@@ -1095,7 +1095,7 @@ export class Game {
     const el = document.createElement('div');
     el.style.cssText = 'position:absolute;inset:0;background:rgba(255,243,196,.97);z-index:9;overflow:auto;pointer-events:auto;color:#4a2c1d;font-family:Jua';
     el.innerHTML = `<div style="max-width:980px;margin:0 auto;padding:16px">
-<div style="text-align:center;font-size:clamp(30px,6vw,52px);color:${m.win === 'mom' ? '#ff6fa5' : '#3b8fd6'};text-shadow:3px 3px 0 #4a2c1d">${m.win === 'mom' ? '엄마 승리! 집이 반짝반짝 ✨' : '장난감 승리! 엄마 포기~ 🧸'}</div>
+<div style="text-align:center;font-size:clamp(30px,6vw,52px);color:${m.win === 'mom' ? '#ff6fa5' : '#3b8fd6'};text-shadow:3px 3px 0 #4a2c1d">${m.win === 'mom' ? '엄마 승리! 집이 반짝반짝 ✨' : '장난감 승리! 청소 포기~ 🧸'}</div>
 <div style="text-align:center;font-size:18px;margin:4px 0 12px">${m.why ? esc(m.why) + ' · ' : ''}${meWin ? '이겼어요!' : '졌어요…'}</div>
 <div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:12px" data-g>
  <div style="background:#fffaf0;border:3px solid #4a2c1d;border-radius:16px;padding:10px"><div style="font-size:18px;margin-bottom:6px">🗺️ 다들 여기 숨어 있었어요</div><canvas data-map style="width:100%;image-rendering:pixelated;border-radius:8px"></canvas><div data-list style="font-size:15px;margin-top:6px"></div></div>

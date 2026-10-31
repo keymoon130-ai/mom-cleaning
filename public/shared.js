@@ -2,7 +2,7 @@
 // 쥐 탈출 버전: 쥐는 열쇠 3개를 찾아 현관문에 꽂고 탈출, 엄마는 막는다.
 export const PROTO = 6;
 // 밸런스 버전: 규칙 숫자(시간·속도·쿨 등)를 바꾸면 +1 → 통계 페이지에서 버전별로 나눠 볼 수 있음
-export const BAL = 10;
+export const BAL = 11;
 
 export const CFG = {
   MAX_PLAYERS: 10,
@@ -21,6 +21,8 @@ export const CFG = {
   HIDE_SQ: 15,       // 숨는 곳에 이만큼 있으면 찍찍!
   HIDE_SQ_EVERY: 5,  // 그 뒤로 몇 초마다
   HOLE_BLOCK: 20,    // 쥐구멍 한 번 쓰면 먼지로 막히는 시간
+  HEAVE: 2,          // 무거운 서랍: 쥐 2마리가 같이 E 꾹 (초)
+  HEAVE_SOLO: 4,     // 쥐가 1마리뿐인 판: 혼자 꾹 (초)
   KEYS: 3,
   SPEED: { mom: 3.4, mouse: 4.0, mouseKey: 3.0 },
   MOUSE: { r: .06, h: .11, step: .05, jump: .55 },
@@ -93,6 +95,8 @@ export const FURN = {
   blanket: { n: '이불 더미', parts: [['s', 0, 0, 0, .42, .14, .4, 0x7cc4ff, 1], ['s', .02, .14, .02, .38, .12, .36, 0xffb3d1, 1], ['s', -.03, .24, -.02, .3, .1, .28, 0xfff6d8, 0]], lift: 1,
     spots: [{ x: 0, y: 0, z: .38, w: .5, h: .2, k: 'lift' }] },
   oldlamp: { n: '낡은 램프', parts: [['c', 0, 0, 0, .12, .04, 0x5e432c, 0], ['c', 0, 0, 0, .02, .9, 0x5e432c, 1], ['c', 0, .82, 0, .18, .22, 0xe8c890, 1]] },
+  hchest: { n: '무거운 서랍장', parts: [['b', 0, 0, 0, .8, .62, .48, 0x6b4a33, 1], ['b', 0, .62, 0, .84, .04, .5, 0x4a3424, 1], ['b', -.38, 0, .22, .05, .62, .05, 0x8a8a8a, 0], ['b', .38, 0, .22, .05, .62, .05, 0x8a8a8a, 0], ['b', 0, .45, .242, .5, .1, .005, 0x4a3424, 0]],
+    heavy: { x: 0, y: .08, z: .24, w: .66, h: .3 } },
   cage: { n: '쥐장', parts: [['b', 0, 0, 0, .64, .03, .48, GY, 1], ['b', 0, .42, 0, .64, .03, .48, SV, 1], ['b', 0, 0, -.235, .64, .42, .01, SV, 1], ['b', 0, 0, .235, .64, .42, .01, SV, 1], ['b', -.315, 0, 0, .01, .42, .48, SV, 1], ['b', .315, 0, 0, .01, .42, .48, SV, 1], ['c', 0, .45, 0, .03, .1, SV, 0]] }
 };
 
@@ -105,25 +109,35 @@ export const HOUSE = {
     ...Array(14).fill('#......................#'),
     '###########+############'
   ],
+  // 1층 칸막이 벽 [x0, z0, x1, z1] (두께 .14) + 문틀 3곳 (문틀 위 상인방)
+  iwalls: [[9.5, 1, 9.5, 4.0], [9.5, 5.2, 9.5, 11.4], [9.5, 12.6, 9.5, 15], [1, 7.5, 6.0, 7.5], [7.2, 7.5, 9.5, 7.5]],
+  lintels: [[9.5, 4.0, 9.5, 5.2], [9.5, 11.4, 9.5, 12.6], [6.0, 7.5, 7.2, 7.5]],
   // [가구, x, z, 방향(0 = 등이 북쪽, 1 = 동쪽, 2 = 남쪽, 3 = 서쪽), 바닥 높이]
   furn: [
-    ['kmat', 4.1, 2.7, 0], ['rug', 20.2, 9.5, 1], ['rug', 9.5, 3.4, 0],
+    // 부엌·식당 (x 1~9.5, z 1~7.5)
+    ['kmat', 4.1, 2.7, 0],
     ['fridge', 1.4, 1.37, 0], ['counter', 3.05, 1.32, 0], ['upcab', 3.05, 1.195, 0], ['cooker', 3.5, 1.2, 0, .91], ['jars', 2.62, 1.12, 0, .91],
     ['chair', 4.0, 2.06, 2], ['bin', 5.0, 1.3, 0],
     ['table', 5.6, 4.3, 0], ['chair', 5.6, 3.45, 0], ['chair', 5.6, 5.15, 2],
-    ['bed', 9.5, 1.97, 0], ['plant', 7.7, 1.4, 0],
+    ['plant', 1.5, 5.0, 0], ['hchest', 8.0, 1.27, 0],
+    // 침실·공부방 (x 1~9.5, z 7.5~15)
+    ['rug', 5.2, 11.2, 0],
+    ['bed', 1.97, 9.0, 3], ['desk', 4.5, 14.68, 2], ['ochair', 4.5, 13.95, 0],
+    ['chest', 1.25, 12.6, 3], ['ladder', 7.3, 14.78, 2], ['cbox', 7.0, 9.0, 0],
+    ['hchest', 3.5, 7.82, 0], ['hchest', 9.18, 9.6, 1],
+    // 거실 (x 9.5~23) — 계단 · 소파 · TV · 현관
+    ['rug', 20.2, 9.5, 1],
     ['tvstand', 22.77, 9.5, 1], ['sofa', 19.0, 9.5, 3], ['coffee', 20.9, 9.5, 3], ['lamp', 22.5, 11.6, 0],
-    ['desk', 1.32, 9.0, 3], ['ochair', 2.15, 9.1, 1],
-    ['chest', 1.25, 12.6, 3], ['ladder', 6.0, 14.78, 2], ['shoecab', 13.6, 14.8, 2],
-    ['cbox', 8.6, 11.8, 0], ['basket', 16.6, 13.6, 0], ['plant', 21.9, 14.3, 0], ['plant', 1.5, 5.0, 0],
-    ['cage', 4.6, 7.8, 0],
+    ['shoecab', 13.6, 14.8, 2], ['basket', 16.6, 13.6, 0], ['plant', 21.9, 14.3, 0], ['plant', 10.1, 7.0, 0],
+    ['cage', 16.0, 5.5, 0], ['hchest', 11.0, 1.27, 0],
     // 다락방
     ['trunk', 20.5, 1.24, 0, ATTIC_Y], ['boxpile', 22.5, 2.9, 1, ATTIC_Y], ['rocker', 17.2, 4.2, 0, ATTIC_Y], ['oldshelf', 14.25, 4.4, 3, ATTIC_Y],
-    ['blanket', 19.4, 5.25, 2, ATTIC_Y], ['oldlamp', 22.4, 5.5, 0, ATTIC_Y]
+    ['blanket', 19.4, 5.25, 2, ATTIC_Y], ['oldlamp', 22.4, 5.5, 0, ATTIC_Y],
+    ['hchest', 22.3, 1.27, 0, ATTIC_Y], ['hchest', 14.27, 2.9, 3, ATTIC_Y]
   ],
-  cage: [4.6, 7.8],
-  momSpawn: [11.5, 6.5],
-  mouseSpawn: [19.5, 12.6],
+  cage: [16.0, 5.5],
+  momSpawn: [13.0, 9.0],
+  mouseSpawn: [5.5, 11.0],
   door: { x0: 11, x1: 12, z: 15, plate: [11.5, 14.93] },
   stairs: { x0: 14.0, z0: 1.0, z1: 1.9, n: 12, run: .3 },
   attic: { x0: 14, x1: 23, z0: 1, z1: 6 },
@@ -132,11 +146,11 @@ export const HOUSE = {
     [[1.0, 0, 6.2, 1, 0], [23.0, 0, 13.6, -1, 0]],
     [[8.6, 0, 15.0, 0, -1], [23.0, ATTIC_Y, 4.2, -1, 0]]
   ],
-  // 열쇠 놓일 수 있는 곳 [x, z, 층(0/1)]
+  // 열쇠 놓일 수 있는 곳 [x, z, 층(0/1)] — 다락방은 높은 곳만
   keys: {
-    attic: [[20.5, 1.22, 1], [15.0, 5.6, 1], [22.6, 2.9, 1], [14.3, 4.5, 1], [17.2, 4.15, 1], [21.2, 5.6, 1]],
-    high: [[5.3, 4.1, 0], [1.25, 8.7, 0], [2.2, 1.5, 0], [6.0, 14.93, 0], [9.6, 2.6, 0], [22.7, 10.2, 0]],
-    low: [[9.5, 1.6, 0], [19.1, 9.3, 0], [5.6, 4.3, 0], [1.5, 9.5, 0], [22.6, 6.5, 0], [12.3, 4.4, 0]]
+    attic: [[20.5, 1.22, 1], [22.6, 2.9, 1], [14.3, 4.5, 1], [17.2, 4.15, 1]],
+    high: [[5.3, 4.1, 0], [2.2, 1.5, 0], [2.3, 9.2, 0], [4.9, 14.5, 0], [7.3, 14.93, 0], [22.7, 10.2, 0]],
+    low: [[5.6, 4.3, 0], [2.0, 9.0, 0], [5.2, 14.5, 0], [19.1, 9.3, 0], [22.6, 6.5, 0], [12.3, 4.4, 0]]
   }
 };
 
@@ -150,7 +164,7 @@ let _house = null;
 export function house() { return _house || (_house = buildHouse()); }
 
 function buildHouse() {
-  const H = HOUSE, boxes = [], spots = [], placed = [];
+  const H = HOUSE, boxes = [], spots = [], placed = [], heavies = [];
   const add = (x0, x1, y0, y1, z0, z1, k, fi = -1) => { boxes.push({ x0: Math.min(x0, x1), x1: Math.max(x0, x1), y0, y1, z0: Math.min(z0, z1), z1: Math.max(z0, z1), k, fi }); };
   // 1층 벽 (격자)
   const g = H.grid, GW = g[0].length, GD = g.length;
@@ -162,6 +176,9 @@ function buildHouse() {
       if (!w && run >= 0) { add(run, x, 0, WALL_H, z, z + 1, 'wall'); run = -1; }
     }
   }
+  // 칸막이 벽 · 문틀 위
+  for (const [x0, z0, x1, z1] of H.iwalls) add(x0 - (x0 === x1 ? .07 : 0), x1 + (x0 === x1 ? .07 : 0), 0, WALL_H, z0 - (z0 === z1 ? .07 : 0), z1 + (z0 === z1 ? .07 : 0), 'iwall');
+  for (const [x0, z0, x1, z1] of H.lintels) add(x0 - (x0 === x1 ? .07 : 0), x1 + (x0 === x1 ? .07 : 0), 2.0, WALL_H, z0 - (z0 === z1 ? .07 : 0), z1 + (z0 === z1 ? .07 : 0), 'iwall');
   // 문 (닫혀 있을 때만 막힘)
   add(H.door.x0, H.door.x1, 0, 2.1, H.door.z, H.door.z + .14, 'door');
   add(H.door.x0, H.door.x1, 2.1, WALL_H, H.door.z, H.door.z + 1, 'wall');
@@ -201,11 +218,15 @@ function buildHouse() {
       const ix = x + fx - nx * .12, iz = z + fz - nz * .12;
       spots.push({ fi, t, k: s.k, x: x + fx, y: y + s.y, z: z + fz, w: s.w, h: s.h, nx, nz, r, ix, iz, ox: x + fx + nx * .14, oz: z + fz + nz * .14 });
     }
+    if (F.heavy) {
+      const s = F.heavy, [fx, fz] = rotXZ(s.x, s.z, r), [nx, nz] = rotXZ(0, 1, r);
+      heavies.push({ fi, x: x + fx, y: y + s.y, base: y, z: z + fz, w: s.w, h: s.h, nx, nz, r, ox: x + fx + nx * .2, oz: z + fz + nz * .2 });
+    }
   });
   // 쥐구멍
   const holes = H.holes.map(pair => pair.map(([x, y, z, dx, dz]) => ({ x, y, z, dx, dz, mx: x + dx * .1, mz: z + dz * .1 })));
   // 열쇠 후보: 그 자리 바닥 높이
-  const W = { boxes, spots, placed, holes, GW, GD, doorOpen: false };
+  const W = { boxes, spots, heavies, placed, holes, GW, GD, doorOpen: false };
   indexBoxes(W);
   const kc = {};
   for (const [k, list] of Object.entries(H.keys)) kc[k] = list.map(([x, z, lv]) => [x, topAt(W, x, z, k === 'low' ? .05 : lv ? ATTIC_TOP - .1 : WALL_H - .1) + .001, z]);
@@ -311,12 +332,10 @@ export function inAttic(x, y, z) { const A = HOUSE.attic; return y > WALL_H - .0
 export function placeName(x, y, z) {
   if (inAttic(x, y, z)) return '다락방';
   if (z > 15.1) return '현관 밖';
-  if (x < 7.5 && z < 6.5) return '부엌';
-  if (x > 16 && z > 6.5 && z < 12.5) return '거실';
-  if (x < 3.5 && z > 7) return '컴퓨터 자리';
-  if (x > 13 && z < 2.5) return '계단';
-  if (z > 12.5) return '현관 쪽';
-  return '방 한가운데';
+  if (x < 9.5) return z < 7.5 ? '부엌' : '침실';
+  if (x > 13.5 && z < 2.2) return '계단';
+  if (z > 12.5 && x < 15) return '현관 쪽';
+  return '거실';
 }
 
 // 받침에 맞는 조사: josa('상자', '이었어요') → '상자였어요', josa('컵', '을') → '컵을'
@@ -373,11 +392,18 @@ export class Sim {
         stat: { catches: 0, miss: 0, opens: 0, keysIn: 0, keysGot: 0, rescues: 0, caughtN: 0, surv: 0, escAt: 0, holes: 0, hides: 0 }
       });
     }
-    // 열쇠: 다락방 1 + 1층 높은 곳 1 + 1층 아무 데나 1
+    // 열쇠: 다락방 높은 곳 1 + (쥐 2마리 이상) 무거운 서랍 속 2 / (쥐 1마리) 1층 높은 곳 1 + 아무 데나 1
     const pick = list => list.splice(R() * list.length | 0, 1)[0];
     const kc = this.W.keyCands, hi = kc.high.slice(), lo = kc.low.slice(), at = kc.attic.slice();
-    const ks = [pick(at), pick(hi)]; const rest = hi.concat(lo); ks.push(pick(rest));
-    this.keys = ks.map(([x, y, z]) => ({ x, y, z, by: null, in: false }));
+    this.solo = mi <= 1;
+    this.hd = this.W.heavies.map(() => ({ open: false, key: -1, prog: 0, t: 0, who: {} }));
+    const a0 = pick(at); this.keys = [{ x: a0[0], y: a0[1], z: a0[2], by: null, in: false, hid: false }];
+    if (this.solo) {
+      for (const c of [pick(hi), pick(hi.concat(lo))]) this.keys.push({ x: c[0], y: c[1], z: c[2], by: null, in: false, hid: false });
+    } else {
+      const ds = this.W.heavies.map((h, i) => i);
+      for (let n = 0; n < 2; n++) { const d = pick(ds), h = this.W.heavies[d]; this.hd[d].key = this.keys.length; this.keys.push({ x: h.ox, y: h.base + .001, z: h.oz, by: null, in: false, hid: true }); }
+    }
     this.holeT = [0, 0]; this.doorOpen = false;
     this.ph = practice ? 'hunt' : 'prep'; this.t = practice ? CFG.HUNT : CFG.PREP;
     this.prev = this.now(); this.ended = false; this.startAt = this.now();
@@ -395,12 +421,13 @@ export class Sim {
     const roles = {}, names = {}, bots = {};
     for (const q of this.P.values()) { roles[q.id] = q.role; names[q.id] = q.name; if (q.bot) bots[q.id] = 1; }
     const me = this.P.get(id);
-    return { type: 'start', ph: this.ph, t: this.t, modes: this.modes, roles, names, bots, needed: this.needed(), K: this.keyRows(), you: id, practice: this.practice,
+    return { type: 'start', HO: this.hd.map(h => h.open ? 1 : 0), solo: this.solo, ph: this.ph, t: this.t, modes: this.modes, roles, names, bots, needed: this.needed(), K: this.keyRows(), you: id, practice: this.practice,
       me: me && { x: me.x, y: me.y, z: me.z, a: me.a, caught: me.caught, hide: me.hide, esc: me.esc } };
   }
   keyRows(forMom) {
     return this.keys.map(k => {
       if (k.in) return [0, 0, 0, 0, 1];
+      if (k.hid) return [0, 0, 0, 0, 2];
       if (k.by) { const h = this.P.get(k.by); return [0, 0, 0, forMom && h && h.hide >= 0 ? 0 : k.by, 0]; }
       return [r2(k.x), r2(k.y), r2(k.z), 0, 0];
     });
@@ -498,6 +525,24 @@ export class Sim {
         if (p.res >= CFG.RESCUE) { p.res = 0; this.rescue(p); }
         break;
       }
+      case 'heave': { // 무거운 서랍 같이 열기 (누르고 있는 동안 계속 온다)
+        if (!this.active(p) || p.hide >= 0 || this.ph !== 'hunt') return;
+        const di = m.d | 0, h = this.W.heavies[di], st = this.hd[di]; if (!h || st.open) return;
+        if (Math.hypot(p.x - h.x, p.z - h.z) > .6 || Math.abs(p.y - h.base) > .45) return;
+        st.who[id] = now;
+        const n = Object.entries(st.who).filter(([q, t]) => now - t < 400 && this.active(this.P.get(q))).length;
+        const need = this.solo ? 1 : 2, T = this.solo ? CFG.HEAVE_SOLO : CFG.HEAVE;
+        if (now - st.t > 800) st.prog = 0;
+        if (n >= need) st.prog += Math.min(.4, (now - (st.t || now)) / 1000);
+        st.t = now;
+        this.toRole('mouse', { type: 'ev', e: 'hprog', d: di, v: r2(st.prog / T), n, need });
+        if (st.prog >= T) {
+          st.open = true;
+          if (st.key >= 0) this.keys[st.key].hid = false;
+          this.out({ type: 'ev', e: 'hopen', d: di, id, key: st.key >= 0 ? 1 : 0 });
+        }
+        break;
+      }
       case 'sign': {
         if (p.role !== 'mouse' || now - (p.pingT || 0) < 2500) return;
         const x = +m.x, y = +m.y, z = +m.z; if (![x, y, z].every(Number.isFinite)) return;
@@ -593,7 +638,7 @@ export class Sim {
         }
         if (q.key < 0) {
           for (let i = 0; i < this.keys.length; i++) {
-            const k = this.keys[i]; if (k.in || k.by) continue;
+            const k = this.keys[i]; if (k.in || k.by || k.hid) continue;
             if (Math.hypot(k.x - q.x, (k.y - q.y) * .7, k.z - q.z) < .28) { k.by = q.id; q.key = i; q.stat.keysGot++; this.out({ type: 'ev', e: 'key', k: i, id: q.id, act: 'get' }); break; }
           }
         } else if (Math.hypot(q.x - plate[0], q.z - plate[1]) < .5 && q.y < .35) {
@@ -624,7 +669,7 @@ export class Sim {
       }
       return P;
     };
-    const base = { type: 'snap', ph: this.ph, t: Math.max(0, Math.round(this.t * 10) / 10), H: this.holeT.map(t => Math.max(0, Math.ceil((t - now) / 1000))), D: this.doorOpen ? 1 : 0, need: this.needed() };
+    const base = { type: 'snap', HO: this.hd.map(h => h.open ? 1 : 0), ph: this.ph, t: Math.max(0, Math.round(this.t * 10) / 10), H: this.holeT.map(t => Math.max(0, Math.ceil((t - now) / 1000))), D: this.doorOpen ? 1 : 0, need: this.needed() };
     const momRows = rows(true), mouseRows = rows(false), Km = this.keyRows(true), Kq = this.keyRows(false);
     const occ = []; for (const q of this.P.values()) if (q.hide >= 0 && !q.gone) occ.push(q.hide);
     for (const q of this.P.values()) {

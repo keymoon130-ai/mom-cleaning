@@ -1,6 +1,6 @@
 // 3D 모델 — 전부 단순한 도형 조합 + 만화 외곽선
 import * as THREE from './vendor/three.module.min.js';
-import { FURN } from './shared.js?v=20';
+import { FURN } from './shared.js?v=21';
 
 const OL = .011; // 외곽선 두께
 const GEO = {};

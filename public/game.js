@@ -1,8 +1,8 @@
 // 엄마의 대청소날~ — 게임 화면 (쥐 탈출 버전)
-import { CFG, FURN, HOUSE, ROT, WALL_H, ATTIC_Y, ATTIC_TOP, JUMP_V, house, moveBody, rayWorld, rayBox, blocked, placeName, josa, Sim } from './shared.js?v=20';
-import { THREE, buildFurn, buildPanel, buildMouse, buildKey, buildDoor, buildHole, mergeStatic, texBox } from './models.js?v=20';
-import { S, bgm, audioInit } from './sfx.js?v=20';
-import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=20';
+import { CFG, FURN, HOUSE, ROT, WALL_H, ATTIC_Y, ATTIC_TOP, JUMP_V, house, moveBody, rayWorld, rayBox, blocked, placeName, josa, Sim } from './shared.js?v=21';
+import { THREE, buildFurn, buildPanel, buildMouse, buildKey, buildDoor, buildHole, mergeStatic, texBox } from './models.js?v=21';
+import { S, bgm, audioInit } from './sfx.js?v=21';
+import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=21';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -104,7 +104,7 @@ export class Game {
       if (bx.k === 'f' || bx.k === 'door') continue;
       const w = bx.x1 - bx.x0, h = bx.y1 - bx.y0, d = bx.z1 - bx.z0;
       let m;
-      if (bx.k === 'wall') m = texBox(w, h, d, w1);
+      if (bx.k === 'wall' || bx.k === 'iwall') m = texBox(w, h, d, w1);
       else if (bx.k === 'awall') m = texBox(w, h, d, w2);
       else if (bx.k === 'slab') { m = texBox(w, h, d, [woodM, woodM, atFl, ceilM, woodM, woodM]); atFl.map.repeat.set(1, 1); }
       else if (bx.k === 'roof') m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), roofM);
@@ -120,7 +120,7 @@ export class Game {
     const win = new THREE.Mesh(new THREE.PlaneGeometry(.9, .6), new THREE.MeshBasicMaterial({ color: 0xbfe6ff })); win.position.set(18.5, 3.3, 1.005); root.add(win);
     const bulb = new THREE.Mesh(new THREE.SphereGeometry(.07, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffe2a0 })); bulb.position.set(18.5, 3.7, 3.5); root.add(bulb);
     const lampM = new THREE.MeshBasicMaterial({ color: 0xfffbe8 }), lampG = new THREE.CylinderGeometry(.3, .34, .05, 16);
-    for (const [x, z] of [[4, 4], [10, 4], [5, 11], [11.5, 9], [18, 9.5], [17, 13]]) { const l = new THREE.Mesh(lampG, lampM); l.position.set(x, WALL_H - .03, z); root.add(l); }
+    for (const [x, z] of [[4.5, 4], [5, 11], [12, 4.5], [12.5, 10], [19, 9.5], [17, 13]]) { const l = new THREE.Mesh(lampG, lampM); l.position.set(x, WALL_H - .03, z); root.add(l); }
     const outside = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 2.2), new THREE.MeshBasicMaterial({ color: 0xfffbe0 })); outside.position.set(11.5, 1.1, 17.45); outside.rotation.y = Math.PI; root.add(outside);
     // 가구
     const statics = []; this.liftObj = new Map();
@@ -138,6 +138,10 @@ export class Game {
       const ax = s.k === 'door' ? s.x - Math.cos(ROT[s.r]) * s.w / 2 : s.x, az = s.k === 'door' ? s.z + Math.sin(ROT[s.r]) * s.w / 2 : s.z;
       pn.position.set(ax, s.y, az); pn.rotation.y = ROT[s.r]; root.add(pn);
       return { k: s.k, g: pn, x: ax, z: az };
+    });
+    // 무거운 서랍 앞판 (열리면 열린 채로)
+    this.heavyObj = W.heavies.map(h => {
+      const pn = buildPanel({ k: 'drawer', w: h.w, h: h.h }, 0x5e432c, ol); pn.position.set(h.x, h.y, h.z); pn.rotation.y = ROT[h.r]; root.add(pn); return pn;
     });
     // 문 · 쥐구멍 · 열쇠
     this.door = buildDoor(); this.door.position.set(12, 0, 15.06); this.door.rotation.y = Math.PI; root.add(this.door);
@@ -177,7 +181,7 @@ export class Game {
     Object.assign(me, { x: this.body.x, y: this.body.y, z: this.body.z });
     this.yaw = sm.a || 0; this.pitch = this.role === 'mom' ? -.12 : -.22; this.bodyYaw = this.yaw;
     this.myHide = sm.hide >= 0 ? sm.hide : -1;
-    this.K = st.K || []; this.holeLeft = [0, 0]; this.occ = new Set(); this.hs = 0;
+    this.K = st.K || []; this.HO = st.HO || []; this.solo = !!st.solo; this.holeLeft = [0, 0]; this.occ = new Set(); this.hs = 0;
     this.stam = CFG.STAMINA; this.vacCd = 0; this.restT = 0; this.spec = null;
     if (this.role === 'mom') this.banner('🧹 엄마 역할이에요!', this.practice ? '집 구경하며 연습해요' : '쥐들이 열쇠 3개로 문을 열고 도망치려 해요. 막아요!', 4.5);
     else this.banner('🐭 쥐 역할이에요!', this.practice ? '열쇠 3개를 찾아 문에 꽂고 탈출해 봐요!' : '엄마가 단장하는 30초 동안 흩어져요! 열쇠 3개 → 현관문 → 탈출', 4.5);
@@ -343,7 +347,7 @@ export class Game {
   myP() { return this.P.get(this.me); }
   isSpec() { const me = this.myP(); return this.role === 'mouse' && me && (me.caught || me.esc); }
   hasKey() { return this.K.some(k => k[3] === this.me); }
-  keysIn() { return this.K.filter(k => k[4]).length; }
+  keysIn() { return this.K.filter(k => k[4] === 1).length; }
 
   // 쥐가 E로 할 수 있는 것 (가까운 순서)
   actTarget() {
@@ -358,6 +362,11 @@ export class Game {
         const left = this.holeLeft[pi] || 0;
         return left > 0 ? { k: 'holeX', txt: `🕸️ 먼지로 막혔어요 (${left}초)`, btn: `🕸️ ${left}초` } : { k: 'hole', p: pi, e: ei, txt: 'E: 쥐구멍으로 들어가기', btn: '🕳️ 쥐구멍' };
       }
+    }
+    for (let i = 0; i < this.W.heavies.length; i++) {
+      const h = this.W.heavies[i];
+      if (this.HO[i] || Math.hypot(b.x - h.x, b.z - h.z) > .55 || Math.abs(b.y - h.base) > .4) continue;
+      return { k: 'heave', d: i, txt: this.solo ? 'E 꾹: 무거운 서랍 열기 (혼자 4초)' : 'E 꾹: 무거운 서랍 같이 열기 (쥐 2마리 필요!)', btn: '💪 꾹: 서랍' };
     }
     let best = null, bd = 1e9;
     this.W.spots.forEach((s, i) => {
@@ -374,7 +383,7 @@ export class Game {
   act() {
     const a = this.actTarget(); if (!a) return;
     if (a.k === 'out') this.net.send({ type: 'hide', s: -1 });
-    else if (a.k === 'res') this.resHold = true;
+    else if (a.k === 'res' || a.k === 'heave') this.resHold = true;
     else if (a.k === 'hole') this.net.send({ type: 'hole', p: a.p, e: a.e });
     else if (a.k === 'hide') { this.net.send({ type: 'hide', s: a.s }); S.poof(); }
     else if (a.k === 'full') this.say('거긴 누가 벌써 숨어 있어요');
@@ -418,6 +427,7 @@ export class Game {
           if (p.caught || p.buf.length === 1) { p.x = x; p.y = y; p.z = z; p.a = a; }
         }
         if (m.K) this.K = m.K;
+        if (m.HO) this.HO = m.HO;
         if (m.H) this.holeLeft = m.H;
         this.W.doorOpen = !!m.D;
         if (m.O) this.occ = new Set(m.O);
@@ -492,7 +502,15 @@ export class Game {
         this.resP = 0;
         break;
       }
-      case 'resp': this.resP = m.v; this.resShow = 1; this.resWho = nm; break;
+      case 'resp': this.resP = m.v; this.resShow = 1; this.resWho = nm + ' 구출 중…'; break;
+      case 'hprog': this.resP = m.v; this.resShow = 1; this.resWho = m.n < m.need ? `💪 ${m.n} / ${m.need}마리 — 친구가 같이 눌러야 열려요!` : '💪 끄응… 서랍 여는 중'; break;
+      case 'hopen': {
+        this.HO[m.d] = 1; const h = this.W.heavies[m.d]; S.tired(); this.posSoundAt(h.x, h.y, h.z, 'open');
+        if (this.role === 'mouse') { this.addFeed(m.key ? '🗄️ 끼이익! 서랍에서 열쇠가 나왔어요!' : '🗄️ 끼이익… 서랍은 텅 비어 있었어요'); if (m.id === this.me || Math.hypot(this.body.x - h.x, this.body.z - h.z) < 1.5) this.banner(m.key ? '🔑 열쇠 발견!' : '꽝…', m.key ? '얼른 주워서 현관문으로!' : '다른 무거운 서랍을 찾아봐요', 2); }
+        else this.addFeed(`🗄️ 끼이익… ${placeName(h.x, h.y, h.z)}에서 서랍 여는 소리!`);
+        this.resP = 0; this.resShow = 0;
+        break;
+      }
       case 'sq': {
         this.bubbles.push({ x: m.x, y: m.y, z: m.z, t: 0 }); this.posSoundAt(m.x, m.y, m.z, 'squeak');
         if (mine) this.say(`찍찍! (숨은 지 ${CFG.HIDE_SQ}초가 넘어서 소리가 나요)`);
@@ -548,7 +566,7 @@ export class Game {
       this.lastSent = s; this.lastSentT = now;
       this.net.send({ type: 'st', x: b.x, y: b.y, z: b.z, a: this.bodyYaw, mv: this.moving ? 1 : 0 });
     }
-    if (this.resHold) { const a = this.actTarget(); if (a && a.k === 'res') this.net.send({ type: 'res' }); }
+    if (this.resHold) { const a = this.actTarget(); if (a && a.k === 'res') this.net.send({ type: 'res' }); else if (a && a.k === 'heave') this.net.send({ type: 'heave', d: a.d }); }
   }
 
   // ───────── 프레임 ─────────
@@ -684,13 +702,15 @@ export class Game {
     // 열쇠
     this.K.forEach((k, i) => {
       const o = this.keyObj[i]; if (!o) return;
-      o.visible = !k[4] && !k[3];
+      o.visible = k[4] === 0 && !k[3];
       if (o.visible) { o.position.set(k[0], k[1] + .06 + Math.sin(tt * 3 + i) * .015, k[2]); o.rotation.set(0, tt * 1.5 + i, .3); }
     });
     // 문
     const n = this.keysIn(), slots = this.door.userData.panel.userData.slots;
     for (let i = 0; i < 3; i++) slots[i * 2 + 1].visible = i < n;
     const dp = this.door.userData.panel; dp.rotation.y += ((this.W.doorOpen ? -1.75 : 0) - dp.rotation.y) * Math.min(1, this.dt * 3);
+    // 무거운 서랍 (열렸으면 쭉 빠져 있음)
+    this.heavyObj.forEach((o, i) => { const h = this.W.heavies[i], k = this.HO[i] ? .32 : 0; o.position.set(h.x + h.nx * k, h.y, h.z + h.nz * k); });
     // 쥐구멍 먼지
     this.holeObj.forEach((pair, pi) => pair.forEach(o => { o.userData.dust.visible = (this.holeLeft[pi] || 0) > 0; }));
     // 숨는 곳 열기 애니메이션
@@ -783,10 +803,12 @@ export class Game {
 <div>· 서랍·찬장·상자를 <b>클릭</b>하면 열어 봐요. 비어 있으면 <b>헛손질</b> → 스펀지가 줄어요</div>
 <div>· <b>${isPhone ? '🌀 버튼' : '우클릭 (또는 F)'} 청소기</b>: 1분에 한 번, 주변 쥐가 휘청 + 숨은 쥐가 튀어나와요</div>
 <div>· 숨은 쥐는 ${CFG.HIDE_SQ}초가 지나면 <b>찍찍!</b> 소리를 내요. 귀를 기울여요</div>
+<div>· <b>끼이익</b> 소리 = 쥐들이 무거운 서랍을 열었다는 뜻! 열쇠가 나왔을지도</div>
 <div>· 잡힌 쥐는 <b>쥐장</b>에 갇혀요. 다른 쥐가 풀어 줄 수 있으니 지켜요</div>
 <div style="margin-top:6px">🏆 쥐가 열쇠 ${CFG.KEYS}개로 현관문을 열고 <b>${nd}마리 이상</b> 나가면 쥐 승리, 아니면 엄마 승리!</div>`
       : `<div style="font-size:26px">🐭 내 역할: <b style="color:#3b8fd6">쥐</b></div>
-<div>· 집 안의 <b>열쇠 ${CFG.KEYS}개</b>를 찾아 <b>현관문 아래 열쇠판</b>에 가져가요 (하나는 늘 <b>다락방</b>에!)</div>
+<div>· 집 안의 <b>열쇠 ${CFG.KEYS}개</b>를 찾아 <b>현관문 아래 열쇠판</b>에 가져가요 (하나는 늘 <b>다락방</b> 높은 곳에!)</div>
+${this.solo ? '' : '<div>· 나머지 열쇠는 <b>💪 무거운 서랍</b> 속! 쥐 <b>2마리가 같이 E 꾹</b> 2초면 열려요 (6개 중 2개만 열쇠)</div>'}
 <div>· <b>Space</b>: 점프 — 의자·식탁·선반을 밟고 높은 데로 올라가요</div>
 <div>· <b>E</b>: 서랍·찬장·상자에 숨기 / 나가기. 숨은 지 ${CFG.HIDE_SQ}초가 지나면 찍찍!</div>
 <div>· <b>E</b>: 쥐구멍 (한 번 쓰면 ${CFG.HOLE_BLOCK}초 동안 먼지로 막혀요)</div>
@@ -847,6 +869,12 @@ export class Game {
       const s = this.proj(k[0], k[1] + .2, k[2]); if (!s || s[2] > (this.role === 'mouse' ? 7 : 5) || !this.seen(k[0], k[1] + .1, k[2])) return;
       g.globalAlpha = .6 + Math.sin(t / 150) * .4; txt('✨', s[0], s[1] - Math.abs(Math.sin(t / 300)) * 6 * sc * D, clamp(22 / s[2], 12, 28), '#ffd34d', 'rgba(0,0,0,0)'); g.globalAlpha = 1;
     });
+    // 무거운 서랍 표시 (쥐에게만)
+    if (this.role === 'mouse' && !this.ended) this.W.heavies.forEach((h, i) => {
+      if (this.HO[i]) return;
+      const s = this.proj(h.x, h.y + .75, h.z); if (!s || s[2] > 9 || !this.seen(h.x + h.nx * .1, h.y + .4, h.z + h.nz * .1)) return;
+      txt('💪', s[0], s[1], clamp(26 / s[2], 12, 30), '#fff', 'rgba(0,0,0,0)');
+    });
     // 찍찍 말풍선
     for (const b of this.bubbles) {
       if (!this.seen(b.x, b.y + .2, b.z) && Math.hypot(b.x - this.cam.position.x, b.z - this.cam.position.z) > 3) continue;
@@ -875,7 +903,7 @@ export class Game {
     if (this.resShow > 0 && this.resP > 0) {
       const w = 260 * sc * D, x = CW / 2 - w / 2, y = CH * .66;
       g.fillStyle = 'rgba(0,0,0,.5)'; g.fillRect(x, y, w, 16 * sc * D); g.fillStyle = '#5fd0b5'; g.fillRect(x, y, w * clamp(this.resP, 0, 1), 16 * sc * D);
-      g.font = `${Math.round(14 * sc * D)}px Jua`; g.fillStyle = '#fff'; g.fillText(`${this.resWho || ''} 구출 중…`, CW / 2, y - 12 * sc);
+      g.font = `${Math.round(14 * sc * D)}px Jua`; g.fillStyle = '#fff'; g.fillText(this.resWho || '', CW / 2, y - 12 * sc);
     }
     // 숨는 곳 안: 문틈 느낌
     if (this.myHide >= 0 && !this.isSpec()) {

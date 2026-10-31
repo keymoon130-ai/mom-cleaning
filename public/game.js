@@ -1,9 +1,9 @@
 // 엄마의 대청소날~ — 게임 화면 (레이캐스터 · 조작 · HUD)
-import { CFG, OBJ, DECOR, MAPS, MAP_IDS, genWorld, collide, solid, speedOf, roomName, WALL_H, formInfo, formReach, formRadius, objR, josa } from './shared.js?v=11';
-import { THREE, buildObj, buildDecor, buildForm, buildRobot, buildToyBox, mergeStatic, objHeight, ROBOT_H } from './models.js?v=11';
-import { toyColor } from './sprites.js?v=11';
-import { S, bgm, audioInit } from './sfx.js?v=11';
-import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=11';
+import { CFG, OBJ, DECOR, MAPS, MAP_IDS, genWorld, collide, solid, speedOf, roomName, WALL_H, formInfo, formReach, formRadius, objR, josa } from './shared.js?v=12';
+import { THREE, buildObj, buildDecor, buildForm, buildRobot, buildToyBox, mergeStatic, objHeight, ROBOT_H } from './models.js?v=12';
+import { toyColor } from './sprites.js?v=12';
+import { S, bgm, audioInit } from './sfx.js?v=12';
+import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=12';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -167,8 +167,8 @@ export class Game {
     piv.userData.k = 'p'; piv.userData.id = p.id;
     if (key !== 'mom') { // 눈 위치용 크기
       const bb = new THREE.Box3().setFromObject(piv), sz = new THREE.Vector3(); bb.getSize(sz);
-      piv.userData.rad = Math.max(sz.x, sz.z) / 2 * .95 + .01; piv.userData.eyeY = Math.min(sz.y * .62, sz.y - .03);
-      piv.userData.eyeS = Math.min(1.6, Math.max(.45, sz.y * 1.4));
+      piv.userData.rad = Math.hypot(sz.x, sz.z) / 2 + .03; piv.userData.eyeY = Math.min(sz.y * .62, sz.y - .03); // rad: 어느 방향으로 돌아도 물건 밖에 붙도록 (대각선 기준)
+      piv.userData.eyeS = Math.min(4, Math.max(1.2, sz.y * 3.5)); // 예전보다 약 2.5배
     }
     this.world.add(piv); p.obj = piv; p.objKey = key;
     return piv;
@@ -845,10 +845,10 @@ export class Game {
         const ph = this.phaseOf(p.id);
         // 숨쉬기 모드: 얼음이어도 1.3%씩 커졌다 작아졌다
         const br = this.modes.breath && p.form ? 1 + .03 * Math.sin(tt * 2.2 + ph) : 1; o.scale.set(br, br, br);
-        // 눈 깜빡 모드: 20초에 한 번, 0.1초 동안 눈을 뜬다 (나를 보는 쪽에)
+        // 눈 깜빡 모드: 10초에 한 번, 0.3초 동안 눈을 뜬다 (나를 보는 쪽에)
         const ey = this.eyesOf(p);
         if (ey) {
-          const on = this.modes.blink && p.form && ((tt + ph * 3.18) % 20) < .1;
+          const on = this.modes.blink && p.form && ((tt + ph * 1.59) % 10) < .3;
           ey.visible = !!on;
           if (on) { const ang = Math.atan2(cx - p.x, cz - p.z), ud = o.userData; ey.position.set(p.x + Math.sin(ang) * ud.rad, ud.eyeY + o.position.y, p.z + Math.cos(ang) * ud.rad); ey.rotation.set(0, ang, 0); ey.scale.setScalar(ud.eyeS); }
         }
@@ -926,7 +926,7 @@ export class Game {
   drawCard() {
     const c = this.hCard; c.style.display = this.cardOn ? 'block' : 'none'; if (!this.cardOn) return;
     const mom = this.role === 'mom';
-    const ML = { blink: '👀 눈 깜빡 (20초마다 0.1초 눈을 떠요)', breath: '😮‍💨 숨쉬기 (얼음이어도 살짝 움직여요)', sqFast: '📢 삑! 자주 (20초마다)', fzLimit: '🧊 얼음 제한 (최대 20초, 쿨 5초)' };
+    const ML = { blink: '👀 눈 깜빡 (10초마다 0.3초 눈을 떠요)', breath: '😮‍💨 숨쉬기 (얼음이어도 살짝 움직여요)', sqFast: '📢 삑! 자주 (20초마다)', fzLimit: '🧊 얼음 제한 (최대 20초, 쿨 5초)' };
     const on = Object.keys(ML).filter(k => this.modes && this.modes[k]);
     const extra = on.length ? `<div style="margin-top:8px;padding-top:6px;border-top:2px dashed #e0c9a8"><b>🎲 이번 판 추가 모드</b>${on.map(k => `<div>· ${ML[k]}</div>`).join('')}</div>` : '';
     c.innerHTML = (mom

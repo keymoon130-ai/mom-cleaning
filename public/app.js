@@ -1,8 +1,8 @@
 // 엄마의 대청소날~ — 화면 흐름 · 접속 · 대기실
-import { PROTO, MAPS, CFG } from './shared.js?v=9';
-import { audioInit, setVol, S, bgm } from './sfx.js?v=9';
-import { Editor, loadLook, saveLook } from './editor.js?v=9';
-import { Game } from './game.js?v=9';
+import { PROTO, MAPS, CFG } from './shared.js?v=10';
+import { audioInit, setVol, S, bgm } from './sfx.js?v=10';
+import { Editor, loadLook, saveLook } from './editor.js?v=10';
+import { Game } from './game.js?v=10';
 
 const $ = id => document.getElementById(id);
 const LS = {
@@ -290,7 +290,7 @@ const PMODES = [['pBlink', 'blink'], ['pBreath', 'breath'], ['pSqFast', 'sqFast'
 function pracSync() {
   const role = (document.querySelector('input[name=pRole]:checked') || {}).value || 'toy';
   $('pMomOpt').style.display = role === 'mom' ? '' : 'none';
-  $('pRoleHint').textContent = role === 'mom' ? '봇 장난감들이 숨어 있어요. 4분 안에 다 찾아 봐요!' : '자유롭게 변신해 보고, R(👀 엄마 눈)로 엄마한테 어떻게 보이는지 확인해요.';
+  $('pRoleHint').textContent = role === 'mom' ? '봇 장난감들이 숨어 있어요. 4분 안에 다 찾아 봐요!' : '자유롭게 변신해 보고, R(👀 엄마 시점)로 찾는 쪽에서 어떻게 보이는지 확인해요.';
 }
 function openPrac() {
   $('pMap').value = PR.map; $('pBots').value = String(PR.bots); $('pDiff').value = PR.diff;

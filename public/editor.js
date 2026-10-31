@@ -1,6 +1,6 @@
 // 엄마 꾸미기 — 32x56 픽셀 에디터
-import { CFG, LOOK_CH } from './shared.js?v=9';
-import { S } from './sfx.js?v=9';
+import { CFG, LOOK_CH } from './shared.js?v=10';
+import { S } from './sfx.js?v=10';
 
 const W = CFG.LOOK_W, H = CFG.LOOK_H, N = W * H;
 const LSget = (k, d) => { try { const v = localStorage.getItem('mc_' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } };

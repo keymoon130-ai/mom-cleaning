@@ -1,9 +1,9 @@
 // 엄마의 대청소날~ — 게임 화면 (레이캐스터 · 조작 · HUD)
-import { CFG, OBJ, DECOR, MAPS, MAP_IDS, genWorld, collide, solid, speedOf, roomName, WALL_H, formInfo, formReach, formRadius, objR } from './shared.js?v=9';
-import { THREE, buildObj, buildDecor, buildForm, buildRobot, buildToyBox, mergeStatic, objHeight, ROBOT_H } from './models.js?v=9';
-import { toyColor } from './sprites.js?v=9';
-import { S, bgm, audioInit } from './sfx.js?v=9';
-import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=9';
+import { CFG, OBJ, DECOR, MAPS, MAP_IDS, genWorld, collide, solid, speedOf, roomName, WALL_H, formInfo, formReach, formRadius, objR } from './shared.js?v=10';
+import { THREE, buildObj, buildDecor, buildForm, buildRobot, buildToyBox, mergeStatic, objHeight, ROBOT_H } from './models.js?v=10';
+import { toyColor } from './sprites.js?v=10';
+import { S, bgm, audioInit } from './sfx.js?v=10';
+import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=10';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;

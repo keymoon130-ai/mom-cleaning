@@ -1,6 +1,6 @@
 // 엄마 꾸미기 — 32x56 픽셀 에디터
-import { CFG, LOOK_CH } from './shared.js?v=8';
-import { S } from './sfx.js?v=8';
+import { CFG, LOOK_CH } from './shared.js?v=9';
+import { S } from './sfx.js?v=9';
 
 const W = CFG.LOOK_W, H = CFG.LOOK_H, N = W * H;
 const LSget = (k, d) => { try { const v = localStorage.getItem('mc_' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } };
@@ -154,7 +154,7 @@ export class Editor {
     this.btn(tools, '🔍', '크게', () => this.setZoom(this.zoom + 2));
     this.btn(tools, '🔎', '작게', () => this.setZoom(this.zoom - 2));
     this.btn(tools, '🗑️', '전부 지우기', () => { if (confirm('전부 지울까요?')) { this.push(); this.px.fill(null); this.changed(); } });
-    this.btn(tools, '👩', '기본 엄마', () => { if (confirm('기본 엄마로 되돌릴까요?')) { this.push(); this.px = defaultPx(); this.changed(); } });
+    this.btn(tools, '👩', '기본 모습', () => { if (confirm('기본 모습으로 되돌릴까요?')) { this.push(); this.px = defaultPx(); this.changed(); } });
 
     // 캔버스
     const stage = document.createElement('div'); stage.className = 'stage'; ed.append(stage); this.stage = stage;
@@ -184,7 +184,7 @@ export class Editor {
     pv.querySelector('.pv').append(this.pv1, this.pv2);
 
     const pb = document.createElement('div'); pb.className = 'box'; side.append(pb);
-    pb.innerHTML = `<div style="font-size:15px;margin-bottom:6px">💾 내 엄마 모음 (5개)</div><div class="ps"></div>`;
+    pb.innerHTML = `<div style="font-size:15px;margin-bottom:6px">💾 꾸미기 저장칸 (5개)</div><div class="ps"></div>`;
     this.psEl = pb.querySelector('.ps');
     this.drawPresets();
 
@@ -216,8 +216,8 @@ export class Editor {
       const b = (t, fn) => { const x = document.createElement('button'); x.type = 'button'; x.textContent = t; x.onclick = () => { S.click(); fn(); }; d.append(x); };
       if (P) b('불러오기', () => { this.push(); this.px = decode(P.look); this.changed(); });
       b('저장', () => {
-        const n = prompt('이 엄마 이름은?', P ? P.name : `${k + 1}번 엄마`); if (n === null) return;
-        ps[k] = { name: n.trim().slice(0, 12) || `${k + 1}번 엄마`, look: encode(this.px) }; LSset('presets', ps); this.drawPresets();
+        const n = prompt('저장칸 이름은?', P ? P.name : `${k + 1}번 꾸미기`); if (n === null) return;
+        ps[k] = { name: n.trim().slice(0, 12) || `${k + 1}번 꾸미기`, look: encode(this.px) }; LSset('presets', ps); this.drawPresets();
       });
       if (P) b('✎', () => { const n = prompt('새 이름', P.name); if (n === null) return; P.name = n.trim().slice(0, 12) || P.name; LSset('presets', ps); this.drawPresets(); });
       this.psEl.append(d);

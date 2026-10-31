@@ -1,9 +1,9 @@
 // 엄마의 대청소날~ — 게임 화면 (레이캐스터 · 조작 · HUD)
-import { CFG, OBJ, DECOR, MAPS, MAP_IDS, genWorld, collide, solid, speedOf, roomName, WALL_H, formInfo, formReach, formRadius, objR } from './shared.js?v=8';
-import { THREE, buildObj, buildDecor, buildForm, buildRobot, buildToyBox, mergeStatic, objHeight, ROBOT_H } from './models.js?v=8';
-import { toyColor } from './sprites.js?v=8';
-import { S, bgm, audioInit } from './sfx.js?v=8';
-import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=8';
+import { CFG, OBJ, DECOR, MAPS, MAP_IDS, genWorld, collide, solid, speedOf, roomName, WALL_H, formInfo, formReach, formRadius, objR } from './shared.js?v=9';
+import { THREE, buildObj, buildDecor, buildForm, buildRobot, buildToyBox, mergeStatic, objHeight, ROBOT_H } from './models.js?v=9';
+import { toyColor } from './sprites.js?v=9';
+import { S, bgm, audioInit } from './sfx.js?v=9';
+import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=9';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -670,8 +670,8 @@ export class Game {
       case 'newmom': {
         const o = this.P.get(m.old); if (o) o.gone = true;
         if (p) { p.role = 'mom'; p.caught = false; p.form = null; this.setLook(m.id, m.look); }
-        this.addFeed(`👩 엄마가 나가서 ${nm}가 새 엄마가 됐어요!`);
-        if (m.id === this.me) { this.role = 'mom'; this.frozen = false; this.pitch = -.15; this.spec = null; this.banner('네가 이제 엄마야!', '장난감을 전부 치워요!', 3); }
+        this.addFeed(`👩 엄마 역할이 나가서 ${nm}가 엄마 역할을 이어받았어요!`);
+        if (m.id === this.me) { this.role = 'mom'; this.frozen = false; this.pitch = -.15; this.spec = null; this.banner('엄마 역할을 이어받았어요!', '장난감을 전부 치워요!', 3); }
         break;
       }
     }
@@ -1101,7 +1101,7 @@ export class Game {
  <div style="background:#fffaf0;border:3px solid #4a2c1d;border-radius:16px;padding:10px"><div style="font-size:18px;margin-bottom:6px">🗺️ 다들 여기 숨어 있었어요</div><canvas data-map style="width:100%;image-rendering:pixelated;border-radius:8px"></canvas><div data-list style="font-size:15px;margin-top:6px"></div></div>
  <div style="display:flex;flex-direction:column;gap:12px">
   <div style="background:#fffaf0;border:3px solid #4a2c1d;border-radius:16px;padding:10px"><div style="font-size:18px">🏅 제일 오래 버틴 장난감</div><div style="font-size:24px;margin-top:4px">${surv ? esc(surv.name) + ` <span style="font-size:16px">${fmtT(surv.surv)} 버팀${surv.spot && surv.spot.f ? ` · ${formInfo(surv.spot.f).n}` : ''}</span>` : '-'}</div></div>
-  <div style="background:#fffaf0;border:3px solid #4a2c1d;border-radius:16px;padding:10px"><div style="font-size:18px">👑 최고의 엄마</div><div data-moms style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap"></div></div>
+  <div style="background:#fffaf0;border:3px solid #4a2c1d;border-radius:16px;padding:10px"><div style="font-size:18px">👑 오늘의 청소왕</div><div data-moms style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap"></div></div>
   <div style="text-align:center;font-size:17px" data-cd></div>
  </div>
 </div></div>`;

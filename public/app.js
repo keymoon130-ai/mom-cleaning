@@ -1,8 +1,8 @@
 // 엄마의 대청소날~ — 화면 흐름 · 접속 · 대기실
-import { PROTO, MAPS, CFG } from './shared.js?v=10';
-import { audioInit, setVol, S, bgm } from './sfx.js?v=10';
-import { Editor, loadLook, saveLook } from './editor.js?v=10';
-import { Game } from './game.js?v=10';
+import { PROTO, MAPS, CFG } from './shared.js?v=11';
+import { audioInit, setVol, S, bgm } from './sfx.js?v=11';
+import { Editor, loadLook, saveLook } from './editor.js?v=11';
+import { Game } from './game.js?v=11';
 
 const $ = id => document.getElementById(id);
 const LS = {
@@ -15,7 +15,7 @@ const MAPN = { random: '무작위', room: '아이 방', kitchen: '부엌', attic
 // ───────── 내 정보 · 설정 ─────────
 let myId = LS.get('id', null);
 if (!myId) { myId = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()); LS.set('id', myId); }
-const DEF = { mouse: 1, touch: 1, bright: 1, sfx: .8, bgm: .45, noShake: false, low: false };
+const DEF = { mouse: 1, touch: 1, bright: 1, sfx: .8, bgm: .45, noShake: false, low: false, full: true };
 const ST = Object.assign({}, DEF, LS.get('set', {}));
 setVol(ST.sfx, ST.bgm);
 export const settings = ST;
@@ -38,9 +38,31 @@ const modal = (id, on = true) => $(id).classList.toggle('on', on);
 // 첫 소리는 사용자가 한 번 눌러야 나온다
 let ambT = null;
 window.addEventListener('pointerdown', () => {
+  if (isPhone && ST.full) goFull();
   const first = !S.ok(); audioInit(); setVol(ST.sfx, ST.bgm);
   if (first) { if (cur === 'sTitle' || cur === 'sQuick') bgm('title'); ambient(); }
 }, true);
+// ───────── 모바일 전체화면 · 가로 고정 ─────────
+// 전체화면은 화면을 한 번 눌러야 켜진다 (브라우저 규칙). 가로 고정은 게임 중에만.
+const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
+function goFull() {
+  if (fsEl()) { lockLand(); return; }
+  const d = document.documentElement, rq = d.requestFullscreen || d.webkitRequestFullscreen;
+  if (!rq) return; // 아이폰 사파리는 지원 안 함 → 홈 화면에 추가하면 전체화면
+  try { const p = rq.call(d, { navigationUI: 'hide' }); if (p && p.then) p.then(lockLand, () => {}); } catch (e) {}
+}
+function lockLand() {
+  if (!game) return;
+  try { const p = screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'); if (p && p.catch) p.catch(() => {}); } catch (e) {}
+}
+function unlockLand() { try { screen.orientation && screen.orientation.unlock && screen.orientation.unlock(); } catch (e) {} }
+export function toggleFull() {
+  if (fsEl()) { unlockLand(); (document.exitFullscreen || document.webkitExitFullscreen).call(document); ST.full = false; }
+  else { ST.full = true; goFull(); }
+  LS.set('set', ST); const c = $('oFull'); if (c) c.checked = ST.full;
+}
+window.__mcFull = toggleFull;
+
 // 첫 화면에서 가끔 슬리퍼 소리 · 청소기 소리
 function ambient() {
   clearTimeout(ambT);
@@ -199,13 +221,14 @@ function onMsg(m) {
       endGame();
       $('gameRoot').classList.add('on');
       game = new Game({ root: $('gameRoot'), net, start: m, settings: ST, lobby, onQuit: () => leaveRoom() });
+      if (isPhone && ST.full && fsEl()) lockLand(); // 이미 전체화면이면 바로 가로로
       break;
     case 'back': endGame(); show('sLobby'); bgm('title'); break;
     case 'pong': break;
     default: if (game) game.onMsg(m);
   }
 }
-function endGame() { if (game) { game.destroy(); game = null; } $('gameRoot').classList.remove('on'); $('gameRoot').textContent = ''; }
+function endGame() { unlockLand(); if (game) { game.destroy(); game = null; } $('gameRoot').classList.remove('on'); $('gameRoot').textContent = ''; }
 
 // ───────── 대기실 ─────────
 for (let i = 3; i <= CFG.MAX_PLAYERS; i++) { const o = document.createElement('option'); o.value = i; o.textContent = i + '명'; $('sMax').append(o); }
@@ -308,6 +331,7 @@ function startPractice(o) {
   endGame(); $('gameRoot').classList.add('on'); bgm(null);
   const opt = JSON.parse(JSON.stringify(o));
   game = new Game({ root: $('gameRoot'), practice: opt, settings: ST, start: null, net: null, onQuit: () => { endGame(); show('sTitle'); }, onRetry: () => startPractice(opt) });
+  if (isPhone && ST.full && fsEl()) lockLand(); // 이미 전체화면이면 바로 가로로
 }
 
 // ───────── 설정 ─────────
@@ -320,6 +344,7 @@ function openSettings() {
   sl('oSfx', 'sfx', v => Math.round(v * 100) + '%'); sl('oBgm', 'bgm', v => Math.round(v * 100) + '%');
   $('oShake').checked = ST.noShake; $('oShake').onchange = () => { ST.noShake = $('oShake').checked; LS.set('set', ST); };
   $('oLow').checked = ST.low; $('oLow').onchange = () => { ST.low = $('oLow').checked; LS.set('set', ST); };
+  if (isPhone) { $('oFullW').style.display = ''; $('oFull').checked = ST.full; $('oFull').onchange = () => { if ($('oFull').checked !== !!fsEl()) toggleFull(); else { ST.full = $('oFull').checked; LS.set('set', ST); } }; }
   modal('mdSet');
 }
 $('oDone').onclick = () => {

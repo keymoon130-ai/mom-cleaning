@@ -289,6 +289,21 @@ export function collide(W, x, z, nx, nz, r = CFG.RADIUS, small = false, objs = f
 }
 
 // 변신할 수 있는 모습 = 물건 26종 + 가구 24종 (가구는 '아주 큼')
+// 받침에 맞는 조사: josa('상자', '이었어요') → '상자였어요', josa('컵', '을') → '컵을'
+const JOSA = { '이었어요': ['이었어요', '였어요'], '였어요': ['이었어요', '였어요'], '이에요': ['이에요', '예요'], '예요': ['이에요', '예요'],
+  '이': ['이', '가'], '가': ['이', '가'], '을': ['을', '를'], '를': ['을', '를'], '은': ['은', '는'], '는': ['은', '는'], '과': ['과', '와'], '와': ['과', '와'], '으로': ['으로', '로'], '로': ['으로', '로'] };
+export function josa(word, j) {
+  const w = String(word), pair = JOSA[j] || [j, j];
+  const c = w.replace(/[\s)\]}'"!?.~]+$/, '').slice(-1), code = c.charCodeAt(0);
+  let fin; // 받침 번호 (0 = 없음)
+  if (code >= 0xac00 && code <= 0xd7a3) fin = (code - 0xac00) % 28;
+  else if (/[0-9]/.test(c)) fin = '178'.includes(c) ? 8 : '036'.includes(c) ? 1 : 0; // 일·칠·팔 = ㄹ, 영·삼·육 = 받침
+  else if (/[a-z]/i.test(c)) fin = /[lmnrk]/i.test(c) ? (/l/i.test(c) ? 8 : 1) : 0;
+  else fin = 0;
+  if (pair[0] === '으로') return w + (fin && fin !== 8 ? '으로' : '로');
+  return w + (fin ? pair[0] : pair[1]);
+}
+
 export function formInfo(f) {
   if (OBJ[f]) return OBJ[f];
   if (DECOR[f]) return { n: DECOR[f].n, s: 'xl' };

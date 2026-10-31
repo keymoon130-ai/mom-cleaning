@@ -1,0 +1,10 @@
+{
+  "name": "엄마의 대청소날~",
+  "short_name": "엄마의 대청소날",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#fff3c4",
+  "theme_color": "#ff6fa5",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

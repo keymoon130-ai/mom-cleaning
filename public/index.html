@@ -2,7 +2,12 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="엄마의 대청소날">
+<link rel="manifest" href="manifest.webmanifest">
 <title>엄마의 대청소날~</title>
 <link href="fonts/jua.css" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧹</text></svg>">
@@ -229,11 +234,12 @@ label.sel{display:flex;flex-direction:column;font-size:13px;color:var(--dim);gap
   <div class="opt"><span>배경음</span><input type="range" id="oBgm" min="0" max="1" step="0.05"><em id="oBgmV"></em></div>
   <label class="sw opt"><input type="checkbox" id="oShake"> 화면 흔들림 끄기</label>
   <label class="sw opt"><input type="checkbox" id="oLow"> 저사양 모드 (화질 낮춤)</label>
+  <label class="sw opt" id="oFullW" style="display:none"><input type="checkbox" id="oFull"> 전체화면 + 게임은 가로 화면 <span class="hint" style="font-size:13px">(아이폰은 공유 → 홈 화면에 추가해서 열면 전체화면)</span></label>
   <details style="margin:8px 0"><summary style="cursor:pointer;font-size:17px">조작법</summary>
   <div class="keys" id="keysBox"></div></details>
   <button class="btn pk" id="oDone" style="width:100%">닫기</button>
 </div></div>
 
-<script type="module" src="app.js?v=10"></script>
+<script type="module" src="app.js?v=11"></script>
 </body>
 </html>

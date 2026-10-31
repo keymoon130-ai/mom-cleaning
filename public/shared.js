@@ -1,7 +1,7 @@
 // 엄마의 대청소날~ — 서버·화면 공용 (맵, 물건, 규칙 숫자)
 export const PROTO = 5;
 // 밸런스 버전: 규칙 숫자(시간·속도·쿨 등)를 바꾸면 +1 → 통계 페이지에서 버전별로 나눠 볼 수 있음
-export const BAL = 2;
+export const BAL = 3;
 
 export const CFG = {
   MAX_PLAYERS: 10,

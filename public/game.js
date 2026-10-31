@@ -1,9 +1,9 @@
 // 엄마의 대청소날~ — 게임 화면 (레이캐스터 · 조작 · HUD)
-import { CFG, OBJ, DECOR, MAPS, MAP_IDS, genWorld, collide, solid, speedOf, roomName, WALL_H, formInfo, formReach, formRadius, objR, josa } from './shared.js?v=12';
-import { THREE, buildObj, buildDecor, buildForm, buildRobot, buildToyBox, mergeStatic, objHeight, ROBOT_H } from './models.js?v=12';
-import { toyColor } from './sprites.js?v=12';
-import { S, bgm, audioInit } from './sfx.js?v=12';
-import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=12';
+import { CFG, OBJ, DECOR, MAPS, MAP_IDS, genWorld, collide, solid, speedOf, roomName, WALL_H, formInfo, formReach, formRadius, objR, josa } from './shared.js?v=13';
+import { THREE, buildObj, buildDecor, buildForm, buildRobot, buildToyBox, mergeStatic, objHeight, ROBOT_H } from './models.js?v=13';
+import { toyColor } from './sprites.js?v=13';
+import { S, bgm, audioInit } from './sfx.js?v=13';
+import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=13';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -843,8 +843,8 @@ export class Game {
         o.position.set(p.x, mv ? Math.abs(Math.sin(tt * 12)) * .06 : 0, p.z);
         o.rotation.set(0, Math.PI / 2 - a, fz ? 0 : Math.sin(tt * 5 + p.x * 3) * .07);
         const ph = this.phaseOf(p.id);
-        // 숨쉬기 모드: 얼음이어도 1.3%씩 커졌다 작아졌다
-        const br = this.modes.breath && p.form ? 1 + .03 * Math.sin(tt * 2.2 + ph) : 1; o.scale.set(br, br, br);
+        // 숨쉬기 모드: 얼음이어도 1.5%씩 커졌다 작아졌다 (한 번에 약 4.5초)
+        const br = this.modes.breath && p.form ? 1 + .015 * Math.sin(tt * 1.4 + ph) : 1; o.scale.set(br, br, br);
         // 눈 깜빡 모드: 10초에 한 번, 0.3초 동안 눈을 뜬다 (나를 보는 쪽에)
         const ey = this.eyesOf(p);
         if (ey) {

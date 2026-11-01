@@ -1,8 +1,8 @@
 // 엄마의 대청소날~ — 게임 화면 (쥐 탈출 버전)
-import { CFG, FURN, HOUSE, HOUSE_W, HOUSE_D, ROT, WALL_H, ATTIC_Y, ATTIC_TOP, JUMP_V, house, moveBody, rayWorld, rayBox, blocked, placeName, josa, Sim } from './shared.js?v=22';
-import { THREE, buildFurn, buildPanel, buildMouse, buildKey, buildDoor, buildHole, mergeStatic, texBox } from './models.js?v=22';
-import { S, bgm, audioInit } from './sfx.js?v=22';
-import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=22';
+import { CFG, FURN, HOUSE, HOUSE_W, HOUSE_D, ROT, WALL_H, ATTIC_Y, ATTIC_TOP, JUMP_V, house, moveBody, rayWorld, rayBox, blocked, placeName, josa, Sim } from './shared.js?v=23';
+import { THREE, buildFurn, buildPanel, buildMouse, buildKey, buildDoor, buildHole, buildCat, buildTrap, mergeStatic, texBox } from './models.js?v=23';
+import { S, bgm, audioInit } from './sfx.js?v=23';
+import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=23';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -149,6 +149,8 @@ export class Game {
     this.door = buildDoor(); this.door.position.set(12, 0, HOUSE.door.z + .06); this.door.rotation.y = Math.PI; root.add(this.door);
     this.holeObj = W.holes.map(pair => pair.map(h => { const o = buildHole(); o.position.set(h.x + h.dx * .006, h.y, h.z + h.dz * .006); o.rotation.y = Math.atan2(h.dx, h.dz); root.add(o); return o; }));
     this.keyObj = [0, 1, 2].map(() => { const k = buildKey(); k.scale.setScalar(1.3); root.add(k); return k; });
+    this.catObj = buildCat(ol); this.catObj.visible = false; root.add(this.catObj);
+    this.trapObj = [0, 1, 2].map(() => { const t = buildTrap(); t.visible = false; root.add(t); return t; });
   }
 
   // 사람마다 3D 몸 (엄마 = 바닥에 수직으로 선 그림판, 쥐 = 작은 쥐)
@@ -183,6 +185,7 @@ export class Game {
     Object.assign(me, { x: this.body.x, y: this.body.y, z: this.body.z });
     this.yaw = sm.a || 0; this.pitch = this.role === 'mom' ? -.12 : -.22; this.bodyYaw = this.yaw;
     this.myHide = sm.hide >= 0 ? sm.hide : -1;
+    this.C = null; this.T = []; this.trapN = 0; this.stuckUntil = 0;
     this.K = st.K || []; this.HO = st.HO || []; this.solo = !!st.solo; this.holeLeft = [0, 0]; this.occ = new Set(); this.hs = 0;
     this.stam = CFG.STAMINA; this.vacCd = 0; this.restT = 0; this.spec = null;
     if (this.role === 'mom') this.banner('🧹 엄마 역할이에요!', this.practice ? '집 구경하며 연습해요' : '쥐들이 열쇠 3개로 문을 열고 도망치려 해요. 막아요!', 4.5);
@@ -191,8 +194,12 @@ export class Game {
     bgm(this.ph === 'prep' ? 'title' : 'game');
   }
   initPractice() {
-    const role = this.popt.role === 'mom' ? 'mom' : 'mouse';
-    this.sim = new Sim({ seed: Math.random() * 1e9 | 0, players: [{ id: 'me', name: '나', role }], practice: true, emit: (to, m) => { if (to === null || to === 'me') this.inbox.push(m); } });
+    const o = this.popt, role = o.role === 'mom' ? 'mom' : 'mouse';
+    const players = [{ id: 'me', name: '나', role }];
+    const MN = ['찍찍이', '치즈', '꼬리', '쫑긋', '콩알'];
+    if (role === 'mouse' && o.momBot && o.momBot !== 'none') players.push({ id: 'bot0', name: '엄마 봇', role: 'mom', bot: 1, diff: o.momBot });
+    if (role === 'mom') for (let i = 0; i < Math.max(1, Math.min(5, o.bots | 0 || 3)); i++) players.push({ id: 'bot' + i, name: MN[i], role: 'mouse', bot: 1, diff: o.diff === 'hard' ? 'hard' : 'easy' });
+    this.sim = new Sim({ seed: Math.random() * 1e9 | 0, players, modes: o.modes || {}, practice: true, emit: (to, m) => { if (to === null || to === 'me') this.inbox.push(m); } });
     this.net = { send: m => this.sim && this.sim.msg('me', m) };
     this.simT = setInterval(() => this.sim.tick(), 66);
     const st = this.sim.startMsg('me'); this.inbox = [];
@@ -292,6 +299,7 @@ export class Game {
     if (k === 'KeyE') this.act();
     if (k === 'KeyG') this.sign();
     if (k === 'KeyF' || k === 'KeyQ') this.vacuum();
+    if (k === 'KeyT' || k === 'KeyR') this.placeTrap();
     if ((k === 'ArrowRight' || k === 'ArrowLeft') && this.isSpec()) this.nextSpec(k === 'ArrowRight' ? 1 : -1);
   }
   touchUI() {
@@ -328,6 +336,7 @@ export class Game {
       act: mkb('✋ 행동', d => { if (d) this.act(); else this.resHold = false; }, true),
       sign: mkb('👋 손짓', () => this.sign()),
       vac: mkb('🌀 청소기', () => this.vacuum()),
+      trap: mkb('🪤 쥐덫', () => this.placeTrap()),
       menu: mkb('☰', () => this.showMenu())
     };
     const help = document.createElement('button'); help.textContent = '? 설명';
@@ -339,7 +348,7 @@ export class Game {
     if (!this.tb) return;
     const mouse = this.role === 'mouse' && !this.isSpec(), mom = this.role === 'mom';
     for (const k of ['jump', 'act', 'sign']) this.tb[k].style.display = mouse ? '' : 'none';
-    this.tb.vac.style.display = mom ? '' : 'none';
+    this.tb.vac.style.display = mom ? '' : 'none'; this.tb.trap.style.display = mom && this.modes.trap ? '' : 'none';
     const a = this.actTarget();
     this.tb.act.textContent = a ? a.btn : '✋ 행동';
   }
@@ -402,6 +411,15 @@ export class Game {
     if (this.vacCd > 0) { this.say(`청소기는 ${this.vacCd}초 뒤에 써요`); return; }
     this.net.send({ type: 'vac' });
   }
+  placeTrap() {
+    if (this.role !== 'mom' || !this.modes.trap || this.ph !== 'hunt' || this.ended) return;
+    const c = this.cam.position, d = this.camDir();
+    if (d.y > -.05) { this.say('🪤 바닥을 보고 놓아요'); return; }
+    const t = Math.min(rayWorld(this.W, c.x, c.y, c.z, d.x, d.y, d.z, 4), (c.y - this.body.y) / -d.y);
+    const x = c.x + d.x * t, z = c.z + d.z * t;
+    if (Math.hypot(x - this.body.x, z - this.body.z) > 2.9) { this.say('🪤 너무 멀어요. 발밑 가까이 놓아요'); return; }
+    this.net.send({ type: 'trap', x, z });
+  }
   primary() {
     if (this.isSpec()) { this.nextSpec(1); return; }
     if (this.role !== 'mom' || this.ph !== 'hunt' || this.ended) return;
@@ -430,6 +448,7 @@ export class Game {
         }
         if (m.K) this.K = m.K;
         if (m.HO) this.HO = m.HO;
+        this.C = m.C || null; if (m.T) this.T = m.T;
         if (m.H) this.holeLeft = m.H;
         this.W.doorOpen = !!m.D;
         if (m.O) this.occ = new Set(m.O);
@@ -507,7 +526,7 @@ export class Game {
       case 'resp': this.resP = m.v; this.resShow = 1; this.resWho = nm + ' 구출 중…'; break;
       case 'hprog': this.resP = m.v; this.resShow = 1; this.resWho = m.n < m.need ? `💪 ${m.n} / ${m.need}마리 — 친구가 같이 눌러야 열려요!` : '💪 끄응… 서랍 여는 중'; break;
       case 'hopen': {
-        this.HO[m.d] = 1; const h = this.W.heavies[m.d]; S.tired(); this.posSoundAt(h.x, h.y, h.z, 'open');
+        this.HO[m.d] = 1; const h = this.W.heavies[m.d]; { const c = this.cam.position, dd = Math.hypot(h.x - c.x, h.z - c.z); S.creak(clamp(1.1 - dd / 16, .25, 1), 0); }
         if (this.role === 'mouse') { this.addFeed(m.key ? '🗄️ 끼이익! 서랍에서 열쇠가 나왔어요!' : '🗄️ 끼이익… 서랍은 텅 비어 있었어요'); if (m.id === this.me || Math.hypot(this.body.x - h.x, this.body.z - h.z) < 1.5) this.banner(m.key ? '🔑 열쇠 발견!' : '꽝…', m.key ? '얼른 주워서 현관문으로!' : '다른 무거운 서랍을 찾아봐요', 2); }
         else this.addFeed(`🗄️ 끼이익… ${placeName(h.x, h.y, h.z)}에서 서랍 여는 소리!`);
         this.resP = 0; this.resShow = 0;
@@ -529,6 +548,19 @@ export class Game {
         if (m.act === 'get') { if (mine) { S.ping(); this.banner('🔑 열쇠 획득!', '현관문으로 가져가요 (들고 있으면 조금 느려요)', 2.2); } else if (this.role === 'mouse') this.addFeed(`🔑 ${josa(nm, '가')} 열쇠를 주웠어요!`); else this.addFeed('🔑 어딘가에서 열쇠가 사라졌어요…'); }
         else if (m.act === 'in') { S.bell(); this.addFeed(`🔑 철컥! 현관문 열쇠 ${m.n} / ${CFG.KEYS}`); this.posSoundAt(HOUSE.door.plate[0], .2, HOUSE.door.plate[1], 'open'); if (mine) this.banner(`철컥! ${m.n} / ${CFG.KEYS}`, m.n < CFG.KEYS ? '남은 열쇠도 찾아요!' : '', 1.8); }
         else if (m.act === 'drop') { if (mine) this.say('열쇠를 떨어뜨렸어요!'); }
+        break;
+      }
+      case 'trapset': this.trapN = m.n; this.say(`🪤 쥐덫을 놓았어요 (${m.n} / 3${m.n >= 3 ? ', 더 놓으면 제일 오래된 게 옮겨져요' : ''})`); S.tick(); break;
+      case 'trap': {
+        S.snap(1, 0); this.posSoundAt(m.x, m.y, m.z, 'snap'); this.fx.push({ k: 'trap', x: m.x, y: m.y + .1, z: m.z, t: 0 });
+        if (mine) { this.stuckUntil = performance.now() + 3000; this.banner('딸깍!!', '쥐덫에 걸렸어요! 3초 동안 못 움직여요', 2.2); this.doShake(.5); }
+        else this.addFeed(this.role === 'mom' ? `🪤 딸깍! ${josa(nm, '가')} 쥐덫에 걸렸어요 (${m.place})` : `🪤 ${josa(nm, '가')} 쥐덫에 걸렸어요!`);
+        break;
+      }
+      case 'meow': {
+        this.bubbles.push({ x: m.x, y: m.y + .2, z: m.z, t: 0, txt: '야옹!' }); this.posSoundAt(m.x, m.y, m.z, 'meow');
+        if (mine) this.say('🐈 고양이한테 들켰어요! 엄마가 올지도…');
+        else if (this.role === 'mom') this.addFeed(`🐈 야옹! 고양이가 ${m.place}에서 쥐를 봤어요`);
         break;
       }
       case 'door': S.win(); this.banner('🚪 문이 열렸다!!', this.role === 'mom' ? '쥐들이 나가기 전에 잡아요!' : '얼른 밖으로 탈출!', 3); this.doShake(.4); break;
@@ -554,7 +586,7 @@ export class Game {
   posSoundAt(x, y, z, kind) {
     const c = this.cam.position, dx = x - c.x, dz = z - c.z, d = Math.hypot(dx, (y - c.y) * 1.5, dz);
     const v = clamp(1.15 - d / 12, 0, 1), pan = clamp(Math.sin(angDiff(Math.atan2(dz, dx), this.yaw)), -1, 1) * .8;
-    if (kind === 'squeak') S.squeak(v, pan); else if (kind === 'step') S.slipper(v * .8, pan); else if (kind === 'open') S.boing(v * .5, pan); else if (kind === 'rustle') S.slipper(v * .5, pan);
+    if (kind === 'meow') S.meow(v, pan); else if (kind === 'snap') S.snap(v, pan); else if (kind === 'squeak') S.squeak(v, pan); else if (kind === 'step') S.slipper(v * .8, pan); else if (kind === 'open') S.boing(v * .5, pan); else if (kind === 'rustle') S.slipper(v * .5, pan);
   }
 
   // ───────── 상태 보내기 ─────────
@@ -588,7 +620,7 @@ export class Game {
     this.moving = false;
     const frozen = me.caught || me.esc || this.myHide >= 0;
     if (!frozen && !this.ended) {
-      const canMove = !this.editor && !this.chatOpen && !(this.role === 'mom' && (this.ph === 'prep' || this.restT > 0));
+      const canMove = !this.editor && !this.chatOpen && !(this.role === 'mom' && (this.ph === 'prep' || this.restT > 0)) && performance.now() > this.stuckUntil;
       let dx = 0, dz = 0;
       if (canMove) {
         let f = 0, s = 0;
@@ -707,6 +739,16 @@ export class Game {
       o.visible = k[4] === 0 && !k[3];
       if (o.visible) { o.position.set(k[0], k[1] + .06 + Math.sin(tt * 3 + i) * .015, k[2]); o.rotation.set(0, tt * 1.5 + i, .3); }
     });
+    // 고양이 · 쥐덫
+    const C = this.C, co = this.catObj; co.visible = !!C;
+    if (C) {
+      const mv = C[4] & 2, k = Math.min(1, this.dt * 10);
+      if (!this.catP) this.catP = { x: C[0], y: C[1], z: C[2], a: C[3] };
+      const cp = this.catP; cp.x += (C[0] - cp.x) * k; cp.y += (C[1] - cp.y) * k; cp.z += (C[2] - cp.z) * k; cp.a += angDiff(C[3], cp.a) * k;
+      co.position.set(cp.x, cp.y + (mv ? Math.abs(Math.sin(tt * 10)) * .02 : 0), cp.z); co.rotation.set(0, Math.PI / 2 - cp.a, 0);
+      co.userData.tail.rotation.x = -.6 + Math.sin(tt * (C[4] & 1 ? 9 : 3)) * .25;
+    }
+    this.trapObj.forEach((o, i) => { const t = this.T[i]; o.visible = !!t; if (t) { o.position.set(t[0], t[1], t[2]); o.rotation.y = i * 1.1; } });
     // 문
     const n = this.keysIn(), slots = this.door.userData.panel.userData.slots;
     for (let i = 0; i < 3; i++) slots[i * 2 + 1].visible = i < n;
@@ -807,6 +849,7 @@ export class Game {
 <div>· 숨은 쥐는 ${CFG.HIDE_SQ}초가 지나면 <b>찍찍!</b> 소리를 내요. 귀를 기울여요</div>
 <div>· <b>끼이익</b> 소리 = 쥐들이 무거운 서랍을 열었다는 뜻! 열쇠가 나왔을지도</div>
 <div>· 잡힌 쥐는 <b>쥐장</b>에 갇혀요. 다른 쥐가 풀어 줄 수 있으니 지켜요</div>
+${this.modes.trap ? '<div>· 🪤 <b>쥐덫</b> (' + (isPhone ? '버튼' : 'T') + '): 바닥을 보고 놓아요. 최대 3개, 밟은 쥐는 3초 묶여요</div>' : ''}${this.modes.cat ? '<div>· 🐈 <b>고양이</b>가 집을 돌아다녀요. 쥐를 보면 야옹! 하고 쫓아가요</div>' : ''}
 <div style="margin-top:6px">🏆 쥐가 열쇠 ${CFG.KEYS}개로 현관문을 열고 <b>${nd}마리 이상</b> 나가면 쥐 승리, 아니면 엄마 승리!</div>`
       : `<div style="font-size:26px">🐭 내 역할: <b style="color:#3b8fd6">쥐</b></div>
 <div>· 집 안의 <b>열쇠 ${CFG.KEYS}개</b>를 찾아 <b>현관문 아래 열쇠판</b>에 가져가요 (하나는 늘 <b>다락방</b> 높은 곳에!)</div>
@@ -816,6 +859,7 @@ ${this.solo ? '' : '<div>· 나머지 열쇠는 <b>💪 무거운 서랍</b> 속
 <div>· <b>E</b>: 쥐구멍 (한 번 쓰면 ${CFG.HOLE_BLOCK}초 동안 먼지로 막혀요)</div>
 <div>· 잡힌 친구는 <b>쥐장</b> 앞에서 <b>E를 3초 꾹</b> 누르면 전부 구출!</div>
 <div>· <b>G</b>: 여기 봐! 손짓 · <b>Enter</b>: 쥐끼리 채팅</div>
+${this.modes.trap ? '<div>· 🪤 바닥의 <b>쥐덫</b>을 밟으면 3초 묶여요. 잘 보고 피해요</div>' : ''}${this.modes.cat ? '<div>· 🐈 <b>고양이</b>한테 들키면 야옹! 소리로 엄마가 알아채요</div>' : ''}
 <div style="margin-top:6px">🏆 문이 열린 뒤 <b>${nd}마리 이상</b> 밖으로 나가면 쥐 승리!</div>`;
   }
   openChat() {
@@ -881,7 +925,7 @@ ${this.solo ? '' : '<div>· 나머지 열쇠는 <b>💪 무거운 서랍</b> 속
     for (const b of this.bubbles) {
       if (!this.seen(b.x, b.y + .2, b.z) && Math.hypot(b.x - this.cam.position.x, b.z - this.cam.position.z) > 3) continue;
       const s = this.proj(b.x, b.y + .3 + b.t * .25, b.z); if (!s) continue;
-      g.globalAlpha = 1 - b.t / 1.4; txt('찍찍!', s[0], s[1], clamp(30 / s[2], 13, 42), '#ffd34d'); g.globalAlpha = 1;
+      g.globalAlpha = 1 - b.t / 1.4; txt(b.txt || '찍찍!', s[0], s[1], clamp(30 / s[2], 13, 42), b.txt ? '#ffb0d0' : '#ffd34d'); g.globalAlpha = 1;
     }
     for (const p of this.pings) {
       const s = this.proj(p.x, p.y + .15, p.z); g.globalAlpha = p.t < 3 ? 1 : 4 - p.t;
@@ -893,7 +937,7 @@ ${this.solo ? '' : '<div>· 나머지 열쇠는 <b>💪 무거운 서랍</b> 속
       const s = this.proj(e.x, e.y, e.z); if (!s) continue;
       g.globalAlpha = 1 - e.t / 1.2;
       if (e.k === 'vac') { g.strokeStyle = '#7cc4ff'; g.lineWidth = 4 * sc; for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(s[0], s[1], ((e.t * 3 + i * .35) % 1.2) * 260 / s[2] * sc, 0, TAU); g.stroke(); } }
-      else txt(e.k === 'grab' ? '잡았다!' : e.k === 'dust' ? '💨' : '텅~', s[0], s[1] - e.t * 40, 28, e.k === 'grab' ? '#ff6fa5' : '#fff');
+      else txt(e.k === 'grab' ? '잡았다!' : e.k === 'dust' ? '💨' : e.k === 'trap' ? '딸깍!' : '텅~', s[0], s[1] - e.t * 40, 28, e.k === 'grab' || e.k === 'trap' ? '#ff6fa5' : '#fff');
       g.globalAlpha = 1;
     }
     // 쥐장 위 숫자
@@ -951,7 +995,7 @@ ${this.solo ? '' : '<div>· 나머지 열쇠는 <b>💪 무거운 서랍</b> 속
     const me = this.myP(); let role;
     if (this.role === 'mom') {
       const sp = '🧽'.repeat(this.stam) + '<span style="opacity:.25">' + '🧽'.repeat(Math.max(0, CFG.STAMINA - this.stam)) + '</span>';
-      role = `<div style="font-size:19px">🧹 엄마</div><div>${sp}</div><div style="font-size:14px">${this.restT > 0 ? '😵 쉬는 중…' : ''}🌀 청소기 ${this.vacCd > 0 ? this.vacCd + '초' : `<b style="color:#3fbf6a">준비됨</b> (${isPhone ? '버튼' : '우클릭'})`}</div>`;
+      role = `<div style="font-size:19px">🧹 엄마</div><div>${sp}</div>${this.modes.trap ? `<div style="font-size:14px">🪤 쥐덫 ${this.T.length} / 3 놓음 (${isPhone ? '버튼' : 'T'})</div>` : ''}<div style="font-size:14px">${this.restT > 0 ? '😵 쉬는 중…' : ''}🌀 청소기 ${this.vacCd > 0 ? this.vacCd + '초' : `<b style="color:#3fbf6a">준비됨</b> (${isPhone ? '버튼' : '우클릭'})`}</div>`;
     } else if (me && me.esc) role = `<div style="font-size:19px">🚪 탈출 성공!</div><div style="font-size:14px">친구들을 응원해요</div>`;
     else if (me && me.caught) role = `<div style="font-size:19px">🔒 잡혔어요</div><div style="font-size:14px">친구가 쥐장을 열어 주길 기다려요</div>`;
     else role = `<div style="font-size:19px">🐭 쥐 ${this.hasKey() ? '· 🔑 들고 있음' : ''}</div><div style="font-size:14px">${this.myHide >= 0 ? `📦 숨는 중 ${this.hs}초` : this.hasKey() ? '현관문 열쇠판으로!' : '열쇠를 찾아요 (하나는 다락방!)'}</div><div style="font-size:14px">📍 ${placeName(this.body.x, this.body.y, this.body.z)}</div>`;

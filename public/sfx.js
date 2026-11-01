@@ -51,6 +51,9 @@ export const S = {
   win() { if (!ac) return; [523, 659, 784, 659, 784, 1047].forEach((f, i) => tone('square', f, f, .16, .15, i * .12)); },
   lose() { if (!ac) return; [392, 370, 349, 262].forEach((f, i) => tone('triangle', f, f * .98, .3, .2, i * .22)); },
   ping() { if (!ac) return; tone('sine', 1320, 1320, .08, .2); tone('sine', 1760, 1760, .1, .2, .08); },
+  meow(v = 1, pan = 0) { if (!ac || v < .02) return; const d = out(v, pan); tone('sawtooth', 520, 880, .16, .18, 0, d); tone('triangle', 880, 420, .42, .3, .14, d); },
+  snap(v = 1, pan = 0) { if (!ac || v < .02) return; const d = out(v, pan); noise(.05, 3000, 1, .6, 0, d); tone('square', 1800, 300, .08, .25, 0, d); },
+  creak(v = 1, pan = 0) { if (!ac || v < .02) return; const d = out(v, pan); tone('sawtooth', 140, 260, .7, .12, 0, d); tone('square', 90, 180, .7, .05, 0, d); },
   // 엄마 잔소리 효과 (점수 없는 짧은 웅얼)
   mom() { if (!ac) return; for (let i = 0; i < 5; i++) tone('sawtooth', 260 + Math.random() * 120, 220 + Math.random() * 90, .1, .08, i * .11); }
 };

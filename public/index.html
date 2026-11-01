@@ -161,6 +161,11 @@ label.sel{display:flex;flex-direction:column;font-size:13px;color:var(--dim);gap
             <label class="sel">방 이름<input type="text" id="sName" maxlength="16"></label>
           </div>
           <label class="sw"><input type="checkbox" id="sPub"> 공개방 (빠른 참가 목록에 보여요)</label>
+          <div style="margin-top:10px;font-size:16px">🎲 추가 모드</div>
+          <div class="modes">
+            <label class="sw" title="엄마가 쥐덫 3개를 놓을 수 있어요. 밟은 쥐는 3초 동안 묶여요"><input type="checkbox" id="mTrap"> 🪤 쥐덫</label>
+            <label class="sw" title="엄마 편 고양이가 돌아다니다 쥐를 보면 야옹! 하고 쫓아가요"><input type="checkbox" id="mCat"> 🐈 고양이</label>
+          </div>
         </div>
         <div class="card">
           <div class="chat" id="lChat"></div>
@@ -198,7 +203,19 @@ label.sel{display:flex;flex-direction:column;font-size:13px;color:var(--dim);gap
     <label class="sw grow btn sm" style="box-shadow:none"><input type="radio" name="pRole" value="mouse"> 🐭 쥐 연습</label>
     <label class="sw grow btn sm" style="box-shadow:none"><input type="radio" name="pRole" value="mom"> 🧹 엄마 연습</label>
   </div>
+  <div id="pMouseOpt" class="row" style="margin:6px 0">
+    <label class="sel grow">엄마 봇<select id="pMomBot"><option value="none">없음 (혼자 탐험)</option><option value="easy">쉬움</option><option value="hard">어려움</option></select></label>
+  </div>
+  <div id="pMomOpt" class="row" style="margin:6px 0">
+    <label class="sel grow">봇 쥐<select id="pBots"><option>2</option><option>3</option><option>4</option><option>5</option></select></label>
+    <label class="sel grow">난이도<select id="pDiff"><option value="easy">쉬움</option><option value="hard">어려움</option></select></label>
+  </div>
   <div id="pRoleHint" class="hint"></div>
+  <div style="margin-top:10px;font-size:16px">🎲 추가 모드</div>
+  <div class="modes">
+    <label class="sw"><input type="checkbox" id="pTrap"> 🪤 쥐덫</label>
+    <label class="sw"><input type="checkbox" id="pCat"> 🐈 고양이</label>
+  </div>
   <div class="row" style="margin-top:14px"><button type="button" class="btn grow" data-close>취소</button><button type="button" class="btn pk grow" id="pGo">시작!</button></div>
 </div></div>
 
@@ -219,6 +236,6 @@ label.sel{display:flex;flex-direction:column;font-size:13px;color:var(--dim);gap
   <button class="btn pk" id="oDone" style="width:100%">닫기</button>
 </div></div>
 
-<script type="module" src="app.js?v=22"></script>
+<script type="module" src="app.js?v=23"></script>
 </body>
 </html>

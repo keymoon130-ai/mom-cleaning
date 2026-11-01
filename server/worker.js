@@ -77,7 +77,7 @@ export class Room {
     this.inited = false; this.code = '';
     this.players = new Map(); this.order = [];
     this.host = null; this.banned = new Set();
-    this.settings = { map: 'house', moms: 1, max: 8, pub: false, name: '' };
+    this.settings = { map: 'house', moms: 1, max: 8, pub: false, name: '', trap: false, cat: false };
     this.phase = 'lobby'; this.g = null; this.loop = null; this.backT = null;
     this.listed = false; this.postT = null; this.beat = null;
   }
@@ -141,7 +141,7 @@ export class Room {
     const live = s.pub && this.players.size > 0 && [...this.players.values()].some(p => p.on);
     if (!live && !this.listed) return;
     const body = live
-      ? { code: this.code, name: s.name || '이름 없는 집', host: hostP ? hostP.name : '?', n: this.players.size, max: s.max, map: s.map, moms: s.moms, phase: this.phase, modes: [] }
+      ? { code: this.code, name: s.name || '이름 없는 집', host: hostP ? hostP.name : '?', n: this.players.size, max: s.max, map: s.map, moms: s.moms, phase: this.phase, modes: ['trap', 'cat'].filter(k => s[k]) }
       : { code: this.code, del: 1 };
     this.listed = !!live;
     lobbyStub(this.env).fetch('https://lobby/put', { method: 'POST', body: JSON.stringify(body) }).catch(() => {});
@@ -189,7 +189,7 @@ export class Room {
     const wasListed = this.listed; this.settings.pub = false;
     if (wasListed) this.post();
     this.players.clear(); this.order = []; this.host = null; this.g = null; this.phase = 'lobby'; this.inited = false; this.banned.clear();
-    this.settings = { map: 'house', moms: 1, max: 8, pub: false, name: '' };
+    this.settings = { map: 'house', moms: 1, max: 8, pub: false, name: '', trap: false, cat: false };
   }
 
   cantStart() {
@@ -242,6 +242,7 @@ export class Room {
         if (m.moms) s.moms = clamp(m.moms | 0, 1, 2);
         if (typeof m.pub === 'boolean') s.pub = m.pub;
         if (typeof m.name === 'string') s.name = clean(m.name, 16) || s.name;
+        for (const k of ['trap', 'cat']) if (typeof m[k] === 'boolean') s[k] = m[k];
         this.pushLobby();
         break;
       }
@@ -265,7 +266,7 @@ export class Room {
     const moms = new Set(pool.slice(0, this.settings.moms).map(p => p.id));
     this.phase = 'game';
     const sim = new Sim({
-      seed: Math.random() * 1e9 | 0, modes: {},
+      seed: Math.random() * 1e9 | 0, modes: { trap: !!this.settings.trap, cat: !!this.settings.cat },
       players: ps.map(p => ({ id: p.id, name: p.name, role: moms.has(p.id) ? 'mom' : 'mouse' })),
       emit: (to, m) => {
         if (to === null) this.all(m); else { const pl = this.players.get(to); if (pl) this.send(pl, m); }

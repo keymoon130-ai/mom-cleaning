@@ -1,6 +1,6 @@
 // 3D 모델 — 전부 단순한 도형 조합 + 만화 외곽선
 import * as THREE from './vendor/three.module.min.js';
-import { FURN } from './shared.js?v=22';
+import { FURN } from './shared.js?v=23';
 
 const OL = .011; // 외곽선 두께
 const GEO = {};
@@ -126,6 +126,28 @@ export function buildHole() {
   const dust = new Mk().s(.06, .05, .04, 0xb8b2a8, 0, .03, .02).s(.045, .04, .035, 0xa8a298, -.05, .025, .03).s(.04, .035, .03, 0xc8c2b8, .05, .02, .03).s(.03, .03, .025, 0x989288, .01, .07, .025).build(true, .004);
   dust.visible = false; g.add(dust); g.userData.dust = dust;
   return g;
+}
+
+// 고양이 (앞 = +z), 키 약 .3
+export function buildCat(outline = true) {
+  const m = new Mk(), O = 0xf2a04a, W = 0xfff2e0, DK2 = 0x2a2a2a;
+  m.s(.1, .09, .2, O, 0, .17, 0).s(.09, .085, .085, O, 0, .26, .19).s(.05, .035, .03, W, 0, .23, .27)
+    .b(.05, .06, .02, O, -.05, .35, .19, 0, 0, .3).b(.05, .06, .02, O, .05, .35, .19, 0, 0, -.3)
+    .s(.012, .02, .006, 0x7ad04a, -.035, .28, .265, false).s(.012, .02, .006, 0x7ad04a, .035, .28, .265, false)
+    .s(.012, .009, .008, PK, 0, .245, .3, false)
+    .b(.035, .12, .035, O, -.06, .06, .12).b(.035, .12, .035, O, .06, .06, .12).b(.035, .12, .035, O, -.06, .06, -.12).b(.035, .12, .035, O, .06, .06, -.12)
+    .b(.02, .02, .1, DK2, -.08, .245, .29, 0, .4, 0, false).b(.02, .02, .1, DK2, .08, .245, .29, 0, -.4, 0, false);
+  const g = m.build(outline, .006);
+  const tail = new THREE.Group(); tail.position.set(0, .2, -.19);
+  for (let i = 0; i < 5; i++) { const c = new THREE.Mesh(cylG(1, 6), mat(O)); c.scale.set(.03, .06, .03); c.position.set(0, .05 * i, -.015 * i); tail.add(c); }
+  g.add(tail); g.userData.tail = tail;
+  return g;
+}
+// 쥐덫
+export function buildTrap() {
+  const m = new Mk();
+  m.b(.16, .015, .09, 0xc98a55, 0, .0075, 0).b(.14, .006, .006, SV, 0, .02, .03).b(.006, .006, .07, SV, -.06, .02, 0).b(.006, .006, .07, SV, .06, .02, 0).b(.03, .008, .025, YL, .02, .019, -.01);
+  return m.build(true, .004);
 }
 
 // 가구 높이 · 크기

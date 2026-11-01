@@ -2,7 +2,7 @@
 // 쥐 탈출 버전: 쥐는 열쇠 3개를 찾아 현관문에 꽂고 탈출, 엄마는 막는다.
 export const PROTO = 6;
 // 밸런스 버전: 규칙 숫자(시간·속도·쿨 등)를 바꾸면 +1 → 통계 페이지에서 버전별로 나눠 볼 수 있음
-export const BAL = 12;
+export const BAL = 13;
 
 export const CFG = {
   MAX_PLAYERS: 10,
@@ -154,6 +154,18 @@ export const HOUSE = {
   }
 };
 export const HOUSE_W = HOUSE.grid[0].length, HOUSE_D = HOUSE.grid.length;
+
+// 봇 길찾기 지점 [x, y, z] + 이어진 길
+export const NAV = {
+  n: [[2.6, 0, 2.6], [6.3, 0, 2.6], [2.6, 0, 5.3], [6.3, 0, 5.3], [7.5, 0, 3.6], [5.6, 0, 6.0],
+    [4.4, 0, 8.8], [6.2, 0, 10.2], [3.0, 0, 9.0], [7.5, 0, 9.4],
+    [8.8, 0, 3.6], [8.8, 0, 9.4], [11.0, 0, 6.5], [11.3, 0, 10.6], [14.8, 0, 10.0], [13.5, 0, 4.8], [11.0, 0, 3.0],
+    [8.6, 0, 1.45], [12.95, ATTIC_Y, 1.45], [13.5, ATTIC_Y, 3.0], [10.5, ATTIC_Y, 4.4], [15.6, ATTIC_Y, 3.6],
+    [11.5, 0, 12.9]],
+  e: [[0, 1], [2, 3], [0, 2], [1, 3], [1, 4], [3, 4], [3, 5], [2, 5], [4, 10], [5, 6], [6, 7], [6, 8], [7, 8], [7, 9], [6, 9], [9, 11],
+    [10, 11], [10, 16], [16, 12], [10, 12], [11, 12], [11, 13], [12, 13], [13, 14], [12, 15], [15, 16], [14, 15], [12, 14], [10, 17], [17, 18], [18, 19], [19, 20], [19, 21], [13, 22]]
+};
+export const CAT = { r: .14, h: .3, step: .22 };
 
 // 방향 → Y 회전 (three.js rotation.y)
 export const ROT = [0, -Math.PI / 2, Math.PI, Math.PI / 2];
@@ -388,7 +400,7 @@ export class Sim {
       if (mom) { x = H.momSpawn[0] + (oi++ % 2) * .6; z = H.momSpawn[1]; }
       else { const a = mi * 2.4, rr = .3 + (mi % 3) * .18; x = H.mouseSpawn[0] + Math.cos(a) * rr; z = H.mouseSpawn[1] + Math.sin(a) * rr; mi++; }
       this.P.set(p.id, {
-        id: p.id, name: p.name, role: mom ? 'mom' : 'mouse', bot: !!p.bot, x, y: 0, z, a: mom ? Math.PI / 2 : -Math.PI / 2, mv: 0,
+        id: p.id, name: p.name, role: mom ? 'mom' : 'mouse', bot: !!p.bot, diff: p.diff || 'easy', vy: 0, ground: true, stuck: 0, x, y: 0, z, a: mom ? Math.PI / 2 : -Math.PI / 2, mv: 0,
         caught: false, caughtAt: 0, grace: 0, hide: -1, hideT: 0, sqNext: 0, key: -1, esc: false, gone: false,
         stam: CFG.STAMINA, rest: 0, regen: 0, vac: 0, lastT: this.now(), res: 0, resT: 0, grabT: 0,
         stat: { catches: 0, miss: 0, opens: 0, keysIn: 0, keysGot: 0, rescues: 0, caughtN: 0, surv: 0, escAt: 0, holes: 0, hides: 0 }
@@ -409,13 +421,18 @@ export class Sim {
     this.holeT = [0, 0]; this.doorOpen = false;
     this.ph = practice ? 'hunt' : 'prep'; this.t = practice ? CFG.HUNT : CFG.PREP;
     this.prev = this.now(); this.ended = false; this.startAt = this.now();
+    // 봇 · 고양이 · 쥐덫
+    for (const p of this.P.values()) if (p.bot) p.ai = { path: [], goal: null, stuck: 0, think: 0, wig: 0, wa: 0, climb: 0, react: 0, tgt: null };
+    this.traps = []; this.heard = null;
+    this.cat = modes.cat ? { x: 14.8, y: 0, z: 10.0, a: 0, vy: 0, ground: true, mv: 0, ai: { path: [], goal: null, stuck: 0, think: 0, wig: 0, wa: 0 }, chase: null, chaseT: 0, meowT: 0 } : null;
+    this.adj = NAV.n.map(() => []); for (const [a, b] of NAV.e) { this.adj[a].push(b); this.adj[b].push(a); }
   }
   get mice() { return [...this.P.values()].filter(q => q.role === 'mouse'); }
   get moms() { return [...this.P.values()].filter(q => q.role === 'mom'); }
   needed() { return Math.max(1, Math.ceil(this.mice.filter(q => !q.gone).length / 2)); }
   keysIn() { return this.keys.filter(k => k.in).length; }
   active(q) { return q && q.role === 'mouse' && !q.caught && !q.esc && !q.gone; }
-  out(m) { this.emit(null, m); }
+  out(m) { this.emit(null, m); if (m.type === 'ev') this.hear(m); }
   to(id, m) { this.emit(id, m); }
   toRole(role, m) { for (const q of this.P.values()) if (q.role === role && !q.gone) this.emit(q.id, m); }
 
@@ -442,6 +459,7 @@ export class Sim {
     switch (m.type) {
       case 'st': {
         if (p.caught || p.esc || p.hide >= 0 || p.rest > 0) return;
+        if (now < p.stuck) { this.to(id, { type: 'fix', x: r2(p.x), y: r2(p.y), z: r2(p.z) }); return; }
         if (this.ph === 'prep' && p.role === 'mom') return;
         let x = +m.x, y = +m.y, z = +m.z; if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(y)) return;
         const dt = Math.min(1, (now - p.lastT) / 1000); p.lastT = now;
@@ -511,7 +529,9 @@ export class Sim {
           if (d >= CFG.VAC_R || Math.abs(t.y - p.y) > 1.6) continue;
           hit.push(t.id);
           if (t.hide >= 0) this.unhide(t, true);
-          this.to(t.id, { type: 'pull', x: r2(p.x), z: r2(p.z), k: r2(Math.min(.8, Math.max(0, d - .45))) });
+          const pk = Math.min(.8, Math.max(0, d - .45));
+          if (t.bot) { const dx = p.x - t.x, dz = p.z - t.z, dd = Math.hypot(dx, dz) || 1; for (let i = 0; i < 8; i++) moveBody(this.W, t, dx / dd * pk / 8, dz / dd * pk / 8, 0, CFG.MOUSE); }
+          else this.to(t.id, { type: 'pull', x: r2(p.x), z: r2(p.z), k: r2(pk) });
         }
         this.out({ type: 'ev', e: 'vac', id, x: r2(p.x), y: r2(p.y), z: r2(p.z), hit });
         break;
@@ -537,12 +557,21 @@ export class Sim {
         if (now - st.t > 800) st.prog = 0;
         if (n >= need) st.prog += Math.min(.4, (now - (st.t || now)) / 1000);
         st.t = now;
-        this.toRole('mouse', { type: 'ev', e: 'hprog', d: di, v: r2(st.prog / T), n, need });
+        if (now - (st.evT || 0) > 180 || st.prog >= T) { st.evT = now; this.toRole('mouse', { type: 'ev', e: 'hprog', d: di, v: r2(st.prog / T), n, need }); }
         if (st.prog >= T) {
           st.open = true;
           if (st.key >= 0) this.keys[st.key].hid = false;
           this.out({ type: 'ev', e: 'hopen', d: di, id, key: st.key >= 0 ? 1 : 0 });
         }
+        break;
+      }
+      case 'trap': { // 엄마: 쥐덫 놓기 (최대 3개, 넘으면 제일 오래된 것 회수)
+        if (p.role !== 'mom' || !this.modes.trap || this.ph !== 'hunt' || p.rest > 0) return;
+        const x = +m.x, z = +m.z; if (!Number.isFinite(x) || !Number.isFinite(z) || Math.hypot(x - p.x, z - p.z) > 3) return;
+        if (now - (p.trapT || 0) < 800) return; p.trapT = now;
+        const y = topAt(this.W, x, z, p.y + .15, .06);
+        this.traps.push({ x: r2(x), y: r2(y), z: r2(z), arm: 0, by: id }); if (this.traps.length > 3) this.traps.shift();
+        this.to(id, { type: 'ev', e: 'trapset', n: this.traps.length });
         break;
       }
       case 'sign': {
@@ -657,7 +686,21 @@ export class Sim {
         }
       }
       if (this.t <= 0) { this.end('mom', '시간이 다 됐어요'); return; }
+      // 쥐덫
+      for (const tr of this.traps) {
+        if (now < tr.arm) continue;
+        for (const q of this.P.values()) {
+          if (!this.active(q) || q.hide >= 0 || now < q.stuck || now < q.grace) continue;
+          if (Math.hypot(q.x - tr.x, q.z - tr.z) < .14 && Math.abs(q.y - tr.y) < .08) {
+            q.stuck = now + 3000; tr.arm = now + 5000;
+            this.out({ type: 'ev', e: 'trap', id: q.id, x: tr.x, y: tr.y, z: tr.z, place: placeName(tr.x, tr.y, tr.z) });
+            break;
+          }
+        }
+      }
     }
+    this.botTick(dt, now);
+    if (this.ended) return;
     this.snap(now);
   }
   snap(now) {
@@ -671,7 +714,7 @@ export class Sim {
       }
       return P;
     };
-    const base = { type: 'snap', HO: this.hd.map(h => h.open ? 1 : 0), ph: this.ph, t: Math.max(0, Math.round(this.t * 10) / 10), H: this.holeT.map(t => Math.max(0, Math.ceil((t - now) / 1000))), D: this.doorOpen ? 1 : 0, need: this.needed() };
+    const base = { type: 'snap', C: this.cat ? [r2(this.cat.x), r2(this.cat.y), r2(this.cat.z), r2(this.cat.a), (this.cat.chase ? 1 : 0) | (this.cat.mv ? 2 : 0)] : 0, T: this.traps.map(t => [t.x, t.y, t.z, now < t.arm ? 0 : 1]), HO: this.hd.map(h => h.open ? 1 : 0), ph: this.ph, t: Math.max(0, Math.round(this.t * 10) / 10), H: this.holeT.map(t => Math.max(0, Math.ceil((t - now) / 1000))), D: this.doorOpen ? 1 : 0, need: this.needed() };
     const momRows = rows(true), mouseRows = rows(false), Km = this.keyRows(true), Kq = this.keyRows(false);
     const occ = []; for (const q of this.P.values()) if (q.hide >= 0 && !q.gone) occ.push(q.hide);
     for (const q of this.P.values()) {
@@ -694,6 +737,187 @@ export class Sim {
     if (left.length && left.every(q => q.caught)) this.end('mom', esc ? `${esc}마리만 탈출했어요` : '');
     else if (esc + left.length < need) this.end('mom');
   }
+  // ───────── 봇 · 고양이 ─────────
+  hear(m) { // 엄마 봇이 듣는 소리
+    const now = this.now();
+    if (m.e === 'sq') this.heard = { x: m.x, y: m.y, z: m.z, s: m.s, t: now, k: 'sq' };
+    else if (m.e === 'hopen' || m.e === 'hprog') { const h = this.W.heavies[m.d]; if (h) this.heard = { x: h.ox, y: h.base, z: h.oz, t: now, k: 'heave' }; }
+    else if (m.e === 'meow' || m.e === 'trap') this.heard = { x: m.x, y: m.y, z: m.z, t: now, k: m.e };
+    else if (m.e === 'hole') { const h = this.W.holes[m.p][1 - m.from]; this.heard = { x: h.x + h.dx * .5, y: h.y, z: h.z + h.dz * .5, t: now, k: 'hole' }; }
+  }
+  nearNode(x, y, z) {
+    let best = -1, bd = 1e9;
+    NAV.n.forEach(([nx, ny, nz], i) => {
+      if (i === 22 && !this.doorOpen) return;
+      const d = Math.hypot(nx - x, (ny - y) * 4, nz - z) + (blocked(this.W, x, y + .08, z, nx, ny + .08, nz) ? 6 : 0);
+      if (d < bd) { bd = d; best = i; }
+    });
+    return best;
+  }
+  route(p, g) {
+    const a = this.nearNode(p.x, p.y, p.z), b = this.nearNode(g.x, g.y, g.z);
+    if (a < 0 || b < 0 || a === b) return [];
+    const prev = new Map([[a, -1]]), q = [a];
+    while (q.length) { const c = q.shift(); if (c === b) break; for (const n of this.adj[c]) if (!prev.has(n) && (n !== 22 || this.doorOpen)) { prev.set(n, c); q.push(n); } }
+    if (!prev.has(b)) return [];
+    const path = []; for (let c = b; c !== -1; c = prev.get(c)) path.unshift(NAV.n[c]);
+    // 첫 지점이 바로 앞이면 건너뛴다
+    if (path.length > 1 && Math.hypot(path[0][0] - p.x, path[0][2] - p.z) < .6) path.shift();
+    return path;
+  }
+  // 목표 쪽으로 한 걸음 (길찾기 + 막히면 점프·옆걸음)
+  goTo(p, tx, ty, tz, sp, dt, P) {
+    const ai = p.ai;
+    if (!ai.goal || Math.hypot(ai.goal.x - tx, ai.goal.z - tz) > .3 || Math.abs(ai.goal.y - ty) > .5) { ai.goal = { x: tx, y: ty, z: tz }; ai.path = this.route(p, ai.goal); }
+    let wp = ai.path[0];
+    if (wp && Math.hypot(wp[0] - p.x, wp[2] - p.z) < .35 && Math.abs(wp[1] - p.y) < .6) { ai.path.shift(); wp = ai.path[0]; }
+    let gx = wp ? wp[0] : tx, gz = wp ? wp[2] : tz;
+    if (ai.wig > 0) { ai.wig -= dt; gx = p.x + Math.cos(ai.wa); gz = p.z + Math.sin(ai.wa); }
+    const dx = gx - p.x, dz = gz - p.z, d = Math.hypot(dx, dz);
+    if (d < .04) { moveBody(this.W, p, 0, 0, dt, P); p.mv = 0; return wp ? 9 : 0; }
+    const k = Math.min(d, sp * dt) / d, ox = p.x, oz = p.z;
+    moveBody(this.W, p, dx * k, dz * k, dt, P);
+    p.a = Math.atan2(dz, dx); p.mv = 1;
+    if (Math.hypot(p.x - ox, p.z - oz) < sp * dt * .3) {
+      ai.stuck += dt;
+      if (P !== CFG.MOM && p.ground) p.vy = P === CFG.MOUSE ? JUMP_V : Math.sqrt(2 * CFG.G * .3);
+      if (ai.stuck > .7) { ai.stuck = 0; ai.wig = .45; ai.wa = Math.random() * Math.PI * 2; ai.path = this.route(p, ai.goal); }
+    } else ai.stuck = 0;
+    return wp ? 9 : Math.hypot(tx - p.x, tz - p.z);
+  }
+  sees(ax, ay, az, b, r) { return Math.hypot(b.x - ax, b.z - az) < r && !blocked(this.W, ax, ay, az, b.x, b.y + .06, b.z); }
+  botTick(dt, now) {
+    const was = this.W.doorOpen; this.W.doorOpen = this.doorOpen; // 집 모양은 방끼리 같이 쓰니까 잠깐만
+    try { this.botTick2(dt, now); } finally { this.W.doorOpen = was; }
+  }
+  botTick2(dt, now) {
+    for (const p of this.P.values()) {
+      if (!p.bot || p.gone || this.ended) continue;
+      if (p.role === 'mom') this.momBot(p, dt, now); else this.mouseBot(p, dt, now);
+    }
+    if (this.cat && this.ph === 'hunt') this.catTick(dt, now);
+  }
+  mouseBot(p, dt, now) {
+    if (!this.active(p)) return;
+    const ai = p.ai, hard = p.diff === 'hard';
+    const moms = this.moms.filter(m => !m.gone);
+    const threat = moms.map(m => ({ m, d: Math.hypot(m.x - p.x, m.z - p.z) + Math.abs(m.y - p.y) * 2 })).sort((a, b) => a.d - b.d)[0];
+    if (p.hide >= 0) {
+      if (this.ph === 'hunt' && (!threat || threat.d > (hard ? 5 : 4)) && p.hideT > (hard ? 6 : 9) + Math.random() * 4) this.unhide(p, false);
+      return;
+    }
+    if (now < p.stuck) { p.mv = 0; return; }
+    ai.think -= dt;
+    if (ai.think <= 0) {
+      ai.think = hard ? .3 : .6;
+      // 엄마가 아주 가깝거나, 다가오는 중이면 위험 (가만히 서 있는 엄마 옆은 슬쩍 지나간다)
+      const danger = threat && this.ph === 'hunt' && (threat.d < 1.6 || (threat.d < (hard ? 3.2 : 2.4) && threat.m.mv)) && this.sees(threat.m.x, threat.m.y + CFG.MOM.eye, threat.m.z, p, 9);
+      if (!danger && ai.tgt && ai.tgt.flee && now < ai.tgt.until) { /* 도망 중이면 조금 더 */ } else {
+      let t = null;
+      if (danger) {
+        // 가까운 숨는 곳 (바닥 높이, 엄마 반대쪽) 아니면 도망
+        let best = null, bs = 1e9;
+        this.W.spots.forEach((s, i) => {
+          if (Math.abs(s.y - p.y) > .15 || [...this.P.values()].some(q => q.hide === i)) return;
+          const d = Math.hypot(s.ox - p.x, s.oz - p.z), dm = Math.hypot(s.ox - threat.m.x, s.oz - threat.m.z);
+          if (d > 3 || dm < 1.5) return; const sc = d - dm * .5; if (sc < bs) { bs = sc; best = i; }
+        });
+        if (best !== null && Math.random() < (hard ? .7 : .5)) t = { k: 'hide', s: best, x: this.W.spots[best].ox, y: this.W.spots[best].y, z: this.W.spots[best].oz };
+        else { const ax = p.x - threat.m.x, az = p.z - threat.m.z, al = Math.hypot(ax, az) || 1; const n = this.nearNode(p.x + ax / al * 3, p.y, p.z + az / al * 3); const N = NAV.n[n]; t = { k: 'go', x: N[0], y: N[1], z: N[2], flee: 1, until: now + 2000 }; }
+      } else if (this.doorOpen) t = { k: 'go', x: 11.5, y: 0, z: HOUSE.door.z + 1 };
+      else if (p.key >= 0) t = { k: 'go', x: HOUSE.door.plate[0], y: 0, z: HOUSE.door.plate[1] - .05 };
+      else if (this.ph === 'hunt') {
+        const keys = this.keys.map((k, i) => ({ k, i })).filter(({ k }) => !k.in && !k.by && !k.hid);
+        if (keys.length) { const { k } = keys.sort((a, b) => Math.hypot(a.k.x - p.x, a.k.z - p.z) - Math.hypot(b.k.x - p.x, b.k.z - p.z))[0]; t = { k: 'key', x: k.x, y: k.y, z: k.z }; }
+        else if (this.mice.some(q => q.caught && !q.gone) && Math.random() < .7) t = { k: 'res', x: HOUSE.cage[0] + .5, y: 0, z: HOUSE.cage[1] };
+        else if (!this.solo && this.hd.some(h => !h.open && h.key >= 0)) {
+          // 다 같이 같은 서랍으로 (제일 낮은 번호부터)
+          if (this.botDrawer === undefined || this.hd[this.botDrawer].open) this.botDrawer = this.hd.findIndex(h => !h.open);
+          const h = this.W.heavies[this.botDrawer]; t = { k: 'heave', d: this.botDrawer, x: h.ox, y: h.base, z: h.oz };
+        }
+      }
+      if (!t) { if (!ai.tgt || ai.tgt.k !== 'wander' || Math.hypot(ai.tgt.x - p.x, ai.tgt.z - p.z) < .5) { const N = NAV.n[Math.random() * 22 | 0]; t = { k: 'wander', x: N[0], y: N[1], z: N[2] }; } else t = ai.tgt; }
+      ai.tgt = t;
+      }
+    }
+    const t = ai.tgt; if (!t) return;
+    const sp = p.key >= 0 ? CFG.SPEED.mouseKey : CFG.SPEED.mouse;
+    const d = this.goTo(p, t.x, t.y, t.z, sp * (hard ? 1 : .85), dt, CFG.MOUSE);
+    if (d < .5 && d !== 9) {
+      if (t.k === 'hide') this.msg(p.id, { type: 'hide', s: t.s });
+      else if (t.k === 'res') this.msg(p.id, { type: 'res' });
+      else if (t.k === 'heave') this.msg(p.id, { type: 'heave', d: t.d });
+      else if (t.k === 'key' && t.y > p.y + .08) { // 높은 데 열쇠: 뛰고, 안 되면 기어오르기
+        if (p.ground) p.vy = JUMP_V; ai.climb += dt;
+        if (ai.climb > 1.2) { p.x = t.x; p.z = t.z; p.y = t.y; p.vy = 0; ai.climb = 0; }
+      }
+    } else ai.climb = 0;
+  }
+  momBot(p, dt, now) {
+    if (this.ph !== 'hunt' || p.rest > 0) { p.mv = 0; return; }
+    const ai = p.ai, hard = p.diff === 'hard', ey = p.y + CFG.MOM.eye;
+    ai.think -= dt;
+    if (ai.think <= 0) {
+      ai.think = hard ? .3 : .7;
+      const vis = this.mice.filter(q => this.active(q) && q.hide < 0 && this.sees(p.x, ey, p.z, q, hard ? 9 : 6.5))
+        .sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z));
+      let t = null;
+      if (vis.length) t = { k: 'chase', id: vis[0].id };
+      else if (this.heard && now - this.heard.t < 12000) {
+        const h = this.heard;
+        t = h.s !== undefined && h.s >= 0 ? { k: 'open', s: h.s, x: this.W.spots[h.s].ox, y: this.W.spots[h.s].y, z: this.W.spots[h.s].oz } : { k: 'go', x: h.x, y: h.y, z: h.z, heard: 1 };
+      } else if (this.keysIn() >= 2) t = { k: 'go', x: 11.5, y: 0, z: HOUSE.door.z - 1.4 };
+      else if (!ai.tgt || ai.tgt.k !== 'patrol' || Math.hypot(ai.tgt.x - p.x, ai.tgt.z - p.z) < .6) { const N = NAV.n[Math.random() * 22 | 0]; t = { k: 'patrol', x: N[0], y: N[1], z: N[2] }; }
+      else t = ai.tgt;
+      if (t.k !== (ai.tgt && ai.tgt.k)) ai.react = hard ? .25 : .7;
+      ai.tgt = t;
+      // 쥐덫: 열쇠판 · 무거운 서랍 앞에 하나씩
+      if (this.modes.trap && this.traps.length < 3 && Math.random() < (hard ? .25 : .08)) {
+        const spots = [HOUSE.door.plate, ...this.W.heavies.filter((h, i) => !this.hd[i].open && h.base < 1).map(h => [h.ox, h.oz])];
+        const c = spots[Math.random() * spots.length | 0];
+        if (Math.hypot(c[0] - p.x, c[1] - p.z) < 2.8 && !this.traps.some(tr => Math.hypot(tr.x - c[0], tr.z - c[1]) < .5)) this.msg(p.id, { type: 'trap', x: c[0] + (Math.random() - .5) * .3, z: c[1] + (Math.random() - .5) * .3 });
+      }
+    }
+    const t = ai.tgt; if (!t) return;
+    ai.react -= dt;
+    if (t.k === 'chase') {
+      const q = this.P.get(t.id);
+      if (this.active(q) && q.hide >= 0) { const sp = this.W.spots[q.hide]; this.heard = { x: sp.ox, y: sp.y, z: sp.oz, s: q.hide, t: now, k: 'saw' }; }
+      if (!this.active(q) || q.hide >= 0) { ai.tgt = null; ai.think = 0; return; }
+      const d3 = Math.hypot(q.x - p.x, q.y + .06 - ey, q.z - p.z);
+      if (d3 > CFG.GRAB_REACH - .25) this.goTo(p, q.x, q.y, q.z, CFG.SPEED.mom * (hard ? 1 : .85), dt, CFG.MOM);
+      else { p.mv = 0; moveBody(this.W, p, 0, 0, dt, CFG.MOM); p.a = Math.atan2(q.z - p.z, q.x - p.x); }
+      if (d3 <= CFG.GRAB_REACH && ai.react <= 0 && now - p.grabT > (hard ? 450 : 900)) {
+        if (Math.random() < (hard ? .85 : .55)) this.msg(p.id, { type: 'grab', id: q.id }); else p.grabT = now;
+      }
+      if (this.modes && p.vac <= now && Math.hypot(q.x - p.x, q.z - p.z) < 2.2 && Math.random() < (hard ? .05 : .01)) this.msg(p.id, { type: 'vac' });
+      return;
+    }
+    const d = this.goTo(p, t.x, t.y, t.z, CFG.SPEED.mom * (hard ? .95 : .8), dt, CFG.MOM);
+    if (t.k === 'open' && d < 1.2 && d !== 9 && ai.react <= 0) { this.msg(p.id, { type: 'open', s: t.s }); this.heard = null; ai.tgt = null; ai.think = .5; }
+    else if (t.heard && d < .8 && d !== 9) { this.heard = null; ai.tgt = null; }
+  }
+  catTick(dt, now) {
+    const c = this.cat, ai = c.ai;
+    c.chaseT -= dt; if (c.chaseT <= 0) c.chase = null;
+    ai.think -= dt;
+    if (ai.think <= 0) {
+      ai.think = .4;
+      if (!c.chase) {
+        const v = this.mice.filter(q => this.active(q) && q.hide < 0 && this.sees(c.x, c.y + .25, c.z, q, 4.5));
+        if (v.length && now > c.meowT) {
+          const q = v[0]; c.chase = q.id; c.chaseT = 3.5; c.meowT = now + 6000;
+          this.out({ type: 'ev', e: 'meow', id: q.id, x: r2(c.x), y: r2(c.y), z: r2(c.z), place: placeName(q.x, q.y, q.z) });
+        }
+      }
+      if (!c.chase && (!c.wt || Math.hypot(c.wt[0] - c.x, c.wt[2] - c.z) < .5)) c.wt = NAV.n[Math.random() * 22 | 0];
+    }
+    const q = c.chase && this.P.get(c.chase);
+    if (q && this.active(q) && q.hide < 0) {
+      if (Math.hypot(q.x - c.x, q.z - c.z) > .3) this.goTo(c, q.x, q.y, q.z, 3.4, dt, CAT); else { c.mv = 0; moveBody(this.W, c, 0, 0, dt, CAT); }
+    } else if (c.wt) this.goTo(c, c.wt[0], c.wt[1], c.wt[2], 1.6, dt, CAT);
+  }
+
   end(win, why) {
     if (this.ended) return;
     this.ended = true;

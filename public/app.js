@@ -1,8 +1,8 @@
 // 엄마의 대청소날~ — 화면 흐름 · 접속 · 대기실
-import { PROTO, MAPS, CFG } from './shared.js?v=22';
-import { audioInit, setVol, S, bgm } from './sfx.js?v=22';
-import { Editor, loadLook, saveLook } from './editor.js?v=22';
-import { Game } from './game.js?v=22';
+import { PROTO, MAPS, CFG } from './shared.js?v=23';
+import { audioInit, setVol, S, bgm } from './sfx.js?v=23';
+import { Editor, loadLook, saveLook } from './editor.js?v=23';
+import { Game } from './game.js?v=23';
 
 const $ = id => document.getElementById(id);
 const LS = {
@@ -240,7 +240,7 @@ $('lStart').onclick = () => { S.click(); send({ type: 'start' }); };
 $('sMoms').onchange = () => send({ type: 'set', moms: +$('sMoms').value });
 $('sMax').onchange = () => send({ type: 'set', max: +$('sMax').value });
 $('sPub').onchange = () => send({ type: 'set', pub: $('sPub').checked });
-const MODES = []; // 추가 모드 (쥐덫 · 고양이는 나중에)
+const MODES = [['mTrap', 'trap', '🪤'], ['mCat', 'cat', '🐈']];
 for (const [id, k] of MODES) $(id).onchange = () => send({ type: 'set', [k]: $(id).checked });
 $('sName').onchange = () => send({ type: 'set', name: $('sName').value });
 $('lChatF').onsubmit = e => { e.preventDefault(); const t = $('lChatIn').value.trim(); if (!t) return; send({ type: 'chat', text: t }); $('lChatIn').value = ''; };
@@ -285,7 +285,7 @@ function drawLobby() {
   $('lStart').disabled = !!why;
   $('lWhy').textContent = isHost ? why : (me.ready ? '방장이 시작하길 기다리는 중…' : '준비를 눌러 주세요!');
   // 설정 (방장만 바꿈)
-  for (const id of ['sMoms', 'sMax', 'sName', 'sPub']) $(id).disabled = !isHost;
+  for (const id of ['sMoms', 'sMax', 'sName', 'sPub', 'mTrap', 'mCat']) $(id).disabled = !isHost;
   for (const [id, k] of MODES) $(id).checked = !!s[k];
   $('sMoms').value = s.moms; $('sMax').value = s.max; $('sPub').checked = !!s.pub;
   if (document.activeElement !== $('sName')) $('sName').value = s.name || '';
@@ -307,18 +307,24 @@ function openEditor() {
 }
 
 // ───────── 혼자 연습 ─────────
-const PR = Object.assign({ role: 'mouse' }, LS.get('prac', {}));
+const PR = Object.assign({ role: 'mouse', momBot: 'easy', bots: 3, diff: 'easy', modes: {} }, LS.get('prac', {}));
+const PMODES = [['pTrap', 'trap'], ['pCat', 'cat']];
 if (PR.role !== 'mom') PR.role = 'mouse';
 function pracSync() {
   const role = (document.querySelector('input[name=pRole]:checked') || {}).value || 'mouse';
-  $('pRoleHint').textContent = role === 'mom' ? '엄마 눈높이로 집을 둘러봐요. 서랍·찬장을 열어 볼 수 있어요. (봇 쥐는 곧 추가돼요)' : '열쇠 3개를 찾아 현관문에 꽂고 탈출해 봐요! 하나는 다락방에 있어요.';
+  $('pMouseOpt').style.display = role === 'mouse' ? '' : 'none'; $('pMomOpt').style.display = role === 'mom' ? '' : 'none';
+  $('pRoleHint').textContent = role === 'mom' ? '봇 쥐들이 열쇠를 찾아 도망치려 해요. 4분 안에 다 잡아 봐요!' : '열쇠 3개를 찾아 현관문에 꽂고 탈출해 봐요! 하나는 다락방 높은 곳에 있어요.';
 }
 function openPrac() {
   for (const r of document.querySelectorAll('input[name=pRole]')) { r.checked = r.value === PR.role; r.onchange = pracSync; }
+  $('pMomBot').value = PR.momBot; $('pBots').value = String(PR.bots); $('pDiff').value = PR.diff;
+  for (const [id, k] of PMODES) $(id).checked = !!(PR.modes || {})[k];
   pracSync(); modal('mdPrac');
 }
 $('pGo').onclick = () => {
   PR.role = (document.querySelector('input[name=pRole]:checked') || {}).value || 'mouse';
+  PR.momBot = $('pMomBot').value; PR.bots = +$('pBots').value; PR.diff = $('pDiff').value;
+  PR.modes = {}; for (const [id, k] of PMODES) PR.modes[k] = $(id).checked;
   LS.set('prac', PR); modal('mdPrac', false); S.click(); startPractice(PR);
 };
 function startPractice(o) {
@@ -329,7 +335,7 @@ function startPractice(o) {
 }
 
 // ───────── 설정 ─────────
-const KEYS_PC = [['WASD', '움직이기'], ['마우스', '둘러보기'], ['Space', '쥐: 점프'], ['E', '쥐: 숨기·나가기 / 쥐구멍 / 쥐장 앞에서 꾹 = 구출'], ['G', '쥐: 여기 봐! 손짓 (쥐끼리만)'], ['클릭', '엄마: 쥐 잡기 · 서랍 열기'], ['우클릭 / F', '엄마: 청소기 (1분에 한 번)'], ['Tab', '내 역할 설명'], ['Enter', '채팅 (같은 편끼리)'], ['Esc', '마우스 풀기 / 메뉴']];
+const KEYS_PC = [['WASD', '움직이기'], ['마우스', '둘러보기'], ['Space', '쥐: 점프'], ['E', '쥐: 숨기·나가기 / 쥐구멍 / 쥐장 앞에서 꾹 = 구출'], ['G', '쥐: 여기 봐! 손짓 (쥐끼리만)'], ['클릭', '엄마: 쥐 잡기 · 서랍 열기'], ['우클릭 / F', '엄마: 청소기 (1분에 한 번)'], ['T', '엄마: 쥐덫 놓기 (쥐덫 모드)'], ['Tab', '내 역할 설명'], ['Enter', '채팅 (같은 편끼리)'], ['Esc', '마우스 풀기 / 메뉴']];
 $('keysBox').innerHTML = KEYS_PC.map(([k, v]) => `<div><b>${k}</b>${v}</div>`).join('') + '<div style="margin-top:6px">📱 폰: 왼쪽 드래그 = 이동, 오른쪽 드래그 = 둘러보기, 버튼으로 나머지</div>';
 function openSettings() {
   $('oName').value = name();

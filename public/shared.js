@@ -2,7 +2,7 @@
 // 쥐 탈출 버전: 쥐는 열쇠 3개를 찾아 현관문에 꽂고 탈출, 엄마는 막는다.
 export const PROTO = 6;
 // 밸런스 버전: 규칙 숫자(시간·속도·쿨 등)를 바꾸면 +1 → 통계 페이지에서 버전별로 나눠 볼 수 있음
-export const BAL = 11;
+export const BAL = 12;
 
 export const CFG = {
   MAX_PLAYERS: 10,
@@ -101,58 +101,59 @@ export const FURN = {
 };
 
 // ───────── 우리 집 (1층 원룸 + 2층 다락방) ─────────
-// 1층: x 1~23, z 1~15. 현관문은 남쪽 벽 x 11~12. 다락방: x 14~23, z 1~6 위 (y 2.3)
+// 1층: x 1~17, z 1~12. 현관문은 남쪽 벽 x 11~12. 다락방: x 9~17, z 1~5 위 (y 2.3)
 export const HOUSE = {
   name: '우리 집',
   grid: [
-    '########################',
-    ...Array(14).fill('#......................#'),
-    '###########+############'
+    '##################',
+    ...Array(11).fill('#................#'),
+    '###########+######'
   ],
   // 1층 칸막이 벽 [x0, z0, x1, z1] (두께 .14) + 문틀 3곳 (문틀 위 상인방)
-  iwalls: [[9.5, 1, 9.5, 4.0], [9.5, 5.2, 9.5, 11.4], [9.5, 12.6, 9.5, 15], [1, 7.5, 6.0, 7.5], [7.2, 7.5, 9.5, 7.5]],
-  lintels: [[9.5, 4.0, 9.5, 5.2], [9.5, 11.4, 9.5, 12.6], [6.0, 7.5, 7.2, 7.5]],
+  iwalls: [[7.5, 1, 7.5, 3.0], [7.5, 4.2, 7.5, 8.8], [7.5, 10.0, 7.5, 12], [1, 6, 5.0, 6], [6.2, 6, 7.5, 6]],
+  lintels: [[7.5, 3.0, 7.5, 4.2], [7.5, 8.8, 7.5, 10.0], [5.0, 6, 6.2, 6]],
   // [가구, x, z, 방향(0 = 등이 북쪽, 1 = 동쪽, 2 = 남쪽, 3 = 서쪽), 바닥 높이]
   furn: [
-    // 부엌·식당 (x 1~9.5, z 1~7.5)
-    ['kmat', 4.1, 2.7, 0],
+    // 부엌·식당 (x 1~7.5, z 1~6)
+    ['kmat', 4.2, 2.7, 0],
     ['fridge', 1.4, 1.37, 0], ['counter', 3.05, 1.32, 0], ['upcab', 3.05, 1.195, 0], ['cooker', 3.5, 1.2, 0, .91], ['jars', 2.62, 1.12, 0, .91],
     ['chair', 4.0, 2.06, 2], ['bin', 5.0, 1.3, 0],
-    ['table', 5.6, 4.3, 0], ['chair', 5.6, 3.45, 0], ['chair', 5.6, 5.15, 2],
-    ['plant', 1.5, 5.0, 0], ['hchest', 8.0, 1.27, 0],
-    // 침실·공부방 (x 1~9.5, z 7.5~15)
-    ['rug', 5.2, 11.2, 0],
-    ['bed', 1.97, 9.0, 3], ['desk', 4.5, 14.68, 2], ['ochair', 4.5, 13.95, 0],
-    ['chest', 1.25, 12.6, 3], ['ladder', 7.3, 14.78, 2], ['cbox', 7.0, 9.0, 0],
-    ['hchest', 3.5, 7.82, 0], ['hchest', 9.18, 9.6, 1],
-    // 거실 (x 9.5~23) — 계단 · 소파 · TV · 현관
-    ['rug', 20.2, 9.5, 1],
-    ['tvstand', 22.77, 9.5, 1], ['sofa', 19.0, 9.5, 3], ['coffee', 20.9, 9.5, 3], ['lamp', 22.5, 11.6, 0],
-    ['shoecab', 13.6, 14.8, 2], ['basket', 16.6, 13.6, 0], ['plant', 21.9, 14.3, 0], ['plant', 10.1, 7.0, 0],
-    ['cage', 16.0, 5.5, 0], ['hchest', 11.0, 1.27, 0],
+    ['table', 4.5, 4.0, 0], ['chair', 4.5, 3.15, 0], ['chair', 4.5, 4.85, 2],
+    ['plant', 1.5, 5.3, 0], ['hchest', 6.6, 1.27, 0],
+    // 침실·공부방 (x 1~7.5, z 6~12)
+    ['rug', 4.4, 8.9, 0],
+    ['bed', 1.97, 7.3, 3], ['desk', 4.3, 11.68, 2], ['ochair', 4.3, 10.95, 0],
+    ['chest', 1.25, 10.0, 3], ['ladder', 6.4, 11.78, 2], ['cbox', 6.3, 7.6, 0],
+    ['hchest', 3.6, 6.33, 0], ['hchest', 7.17, 7.4, 1],
+    // 거실 (x 7.5~17) — 계단 · 소파 · TV · 현관
+    ['rug', 14.5, 7.0, 1],
+    ['tvstand', 16.77, 7.0, 1], ['sofa', 13.4, 7.0, 3], ['coffee', 14.9, 7.0, 3], ['lamp', 16.5, 9.2, 0],
+    ['shoecab', 13.6, 11.8, 2], ['basket', 16.3, 10.6, 0], ['plant', 8.2, 6.4, 0],
+    ['cage', 15.5, 3.8, 0], ['hchest', 8.4, 11.74, 2],
     // 다락방
-    ['trunk', 20.5, 1.24, 0, ATTIC_Y], ['boxpile', 22.5, 2.9, 1, ATTIC_Y], ['rocker', 17.2, 4.2, 0, ATTIC_Y], ['oldshelf', 14.25, 4.4, 3, ATTIC_Y],
-    ['blanket', 19.4, 5.25, 2, ATTIC_Y], ['oldlamp', 22.4, 5.5, 0, ATTIC_Y],
-    ['hchest', 22.3, 1.27, 0, ATTIC_Y], ['hchest', 14.27, 2.9, 3, ATTIC_Y]
+    ['trunk', 14.5, 1.24, 0, ATTIC_Y], ['boxpile', 16.5, 2.6, 1, ATTIC_Y], ['rocker', 12.0, 3.6, 0, ATTIC_Y], ['oldshelf', 9.25, 3.6, 3, ATTIC_Y],
+    ['blanket', 14.0, 4.4, 2, ATTIC_Y], ['oldlamp', 16.5, 4.5, 0, ATTIC_Y],
+    ['hchest', 16.3, 1.27, 0, ATTIC_Y], ['hchest', 9.27, 2.5, 3, ATTIC_Y]
   ],
-  cage: [16.0, 5.5],
-  momSpawn: [13.0, 9.0],
-  mouseSpawn: [5.5, 11.0],
-  door: { x0: 11, x1: 12, z: 15, plate: [11.5, 14.93] },
-  stairs: { x0: 14.0, z0: 1.0, z1: 1.9, n: 12, run: .3 },
-  attic: { x0: 14, x1: 23, z0: 1, z1: 6 },
+  cage: [15.5, 3.8],
+  momSpawn: [11.0, 6.5],
+  mouseSpawn: [4.5, 9.0],
+  door: { x0: 11, x1: 12, z: 12, plate: [11.5, 11.93] },
+  stairs: { x0: 9.0, z0: 1.0, z1: 1.9, n: 12, run: .3 },
+  attic: { x0: 9, x1: 17, z0: 1, z1: 5 },
   // 쥐구멍 2쌍 [x, y, z, 벽 방향 → 나오는 방향 (dx, dz)]
   holes: [
-    [[1.0, 0, 6.2, 1, 0], [23.0, 0, 13.6, -1, 0]],
-    [[8.6, 0, 15.0, 0, -1], [23.0, ATTIC_Y, 4.2, -1, 0]]
+    [[1.0, 0, 5.0, 1, 0], [17.0, 0, 10.4, -1, 0]],
+    [[2.6, 0, 12.0, 0, -1], [17.0, ATTIC_Y, 3.8, -1, 0]]
   ],
   // 열쇠 놓일 수 있는 곳 [x, z, 층(0/1)] — 다락방은 높은 곳만
   keys: {
-    attic: [[20.5, 1.22, 1], [22.6, 2.9, 1], [14.3, 4.5, 1], [17.2, 4.15, 1]],
-    high: [[5.3, 4.1, 0], [2.2, 1.5, 0], [2.3, 9.2, 0], [4.9, 14.5, 0], [7.3, 14.93, 0], [22.7, 10.2, 0]],
-    low: [[5.6, 4.3, 0], [2.0, 9.0, 0], [5.2, 14.5, 0], [19.1, 9.3, 0], [22.6, 6.5, 0], [12.3, 4.4, 0]]
+    attic: [[14.5, 1.22, 1], [16.6, 2.6, 1], [9.3, 3.7, 1], [12.0, 3.55, 1]],
+    high: [[4.2, 3.8, 0], [2.2, 1.5, 0], [2.3, 7.5, 0], [4.7, 11.5, 0], [6.4, 11.93, 0], [16.7, 7.7, 0]],
+    low: [[4.5, 4.0, 0], [2.0, 7.3, 0], [5.0, 11.5, 0], [13.5, 6.8, 0], [16.3, 4.8, 0], [8.5, 5.0, 0]]
   }
 };
+export const HOUSE_W = HOUSE.grid[0].length, HOUSE_D = HOUSE.grid.length;
 
 // 방향 → Y 회전 (three.js rotation.y)
 export const ROT = [0, -Math.PI / 2, Math.PI, Math.PI / 2];
@@ -183,15 +184,16 @@ function buildHouse() {
   add(H.door.x0, H.door.x1, 0, 2.1, H.door.z, H.door.z + .14, 'door');
   add(H.door.x0, H.door.x1, 2.1, WALL_H, H.door.z, H.door.z + 1, 'wall');
   // 현관 밖 (탈출 구역 벽)
-  add(H.door.x0 - .2, H.door.x0, 0, WALL_H, 16, 17.5, 'wall'); add(H.door.x1, H.door.x1 + .2, 0, WALL_H, 16, 17.5, 'wall'); add(H.door.x0 - .2, H.door.x1 + .2, 0, WALL_H, 17.5, 17.7, 'wall');
+  const dz = H.door.z; add(H.door.x0 - .2, H.door.x0, 0, WALL_H, dz + 1, dz + 2.5, 'wall'); add(H.door.x1, H.door.x1 + .2, 0, WALL_H, dz + 1, dz + 2.5, 'wall'); add(H.door.x0 - .2, H.door.x1 + .2, 0, WALL_H, dz + 2.5, dz + 2.7, 'wall');
   // 계단 (동쪽으로 올라감)
   const S = H.stairs, rise = ATTIC_Y / S.n;
   for (let i = 0; i < S.n; i++) add(S.x0 + i * S.run, S.x0 + (i + 1) * S.run, 0, (i + 1) * rise, S.z0, S.z1, 'stair');
   const sx1 = S.x0 + S.n * S.run;
   // 1층 천장 = 다락방 바닥 (계단 구멍 빼고)
-  add(1, 23, WALL_H, ATTIC_Y, S.z1, 15, 'slab');
+  const IX = GW - 1, IZ = GD - 1;
+  add(1, IX, WALL_H, ATTIC_Y, S.z1, IZ, 'slab');
   add(1, S.x0, WALL_H, ATTIC_Y, 1, S.z1, 'slab');
-  add(sx1, 23, WALL_H, ATTIC_Y, 1, S.z1, 'slab');
+  add(sx1, IX, WALL_H, ATTIC_Y, 1, S.z1, 'slab');
   // 다락방 벽 · 난간 · 지붕
   const A = H.attic;
   add(A.x0 - .2, A.x0, ATTIC_Y, ATTIC_TOP, A.z0, A.z1 + .2, 'awall');
@@ -331,10 +333,10 @@ export function blocked(W, ax, ay, az, bx, by, bz) {
 export function inAttic(x, y, z) { const A = HOUSE.attic; return y > WALL_H - .05 && x > A.x0 - .5 && x < A.x1 + .5 && z > A.z0 - .5 && z < A.z1 + .5; }
 export function placeName(x, y, z) {
   if (inAttic(x, y, z)) return '다락방';
-  if (z > 15.1) return '현관 밖';
-  if (x < 9.5) return z < 7.5 ? '부엌' : '침실';
-  if (x > 13.5 && z < 2.2) return '계단';
-  if (z > 12.5 && x < 15) return '현관 쪽';
+  if (z > HOUSE.door.z + .1) return '현관 밖';
+  if (x < 7.5) return z < 6 ? '부엌' : '침실';
+  if (x > 8.5 && x < 13 && z < 2.2) return '계단';
+  if (z > 9.5 && x > 9.5 && x < 14) return '현관 쪽';
   return '거실';
 }
 
@@ -446,7 +448,7 @@ export class Sim {
         const sp = p.role === 'mom' ? CFG.SPEED.mom : CFG.SPEED.mouse;
         const max = sp * dt * 1.6 + .35, d = Math.hypot(x - p.x, z - p.z);
         if (d > max) { const k = max / d; x = p.x + (x - p.x) * k; z = p.z + (z - p.z) * k; this.to(id, { type: 'fix', x: r2(x), y: r2(y), z: r2(z) }); }
-        p.x = clampN(x, .9, 23.1); p.z = clampN(z, .9, this.doorOpen ? 17.6 : 15.2); p.y = clampN(y, 0, ATTIC_TOP);
+        p.x = clampN(x, .9, HOUSE_W - .9); p.z = clampN(z, .9, HOUSE.door.z + (this.doorOpen ? 2.6 : .2)); p.y = clampN(y, 0, ATTIC_TOP);
         if (Number.isFinite(+m.a)) p.a = +m.a;
         p.mv = m.mv ? 1 : 0;
         break;
@@ -563,7 +565,7 @@ export class Sim {
     if (p.key < 0) return;
     const k = this.keys[p.key], s = p.hide >= 0 ? this.W.spots[p.hide] : null;
     k.by = null; k.x = s ? s.ox : p.x; k.z = s ? s.oz : p.z; k.y = s ? s.y : p.y;
-    if (k.z > 15.1) k.z = 14.8;
+    if (k.z > HOUSE.door.z + .1) k.z = HOUSE.door.z - .2;
     this.out({ type: 'ev', e: 'key', k: p.key, id: p.id, act: 'drop' });
     p.key = -1;
   }

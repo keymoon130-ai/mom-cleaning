@@ -1,6 +1,6 @@
 // 3D 모델 — 전부 단순한 도형 조합 + 만화 외곽선
 import * as THREE from './vendor/three.module.min.js';
-import { FURN } from './shared.js?v=21';
+import { FURN } from './shared.js?v=22';
 
 const OL = .011; // 외곽선 두께
 const GEO = {};
@@ -64,9 +64,12 @@ export function buildFurn(t, outline = true) {
   return m.build(outline);
 }
 // 숨는 곳 문짝 · 서랍 앞판 (움직이니까 따로)
-export function buildPanel(s, col, outline = true) {
+export function buildPanel(s, col, outline = true, depth = .3) {
   const m = new Mk(), w = s.w, h = s.h;
-  if (s.k === 'drawer') m.b(w, h, .03, col, 0, h / 2, .015).b(w * .3, .03, .02, SV, 0, h * .55, .04);
+  // 서랍 = 앞판 + 양옆 · 바닥 · 뒤판 (열면 상자째 빠져나온다)
+  if (s.k === 'drawer') m.b(w, h, .03, col, 0, h / 2, .015).b(w * .3, .03, .02, SV, 0, h * .55, .04)
+    .b(.02, h * .75, depth, col, -(w / 2 - .03), h * .4, -depth / 2).b(.02, h * .75, depth, col, w / 2 - .03, h * .4, -depth / 2)
+    .b(w - .06, .02, depth, col, 0, .03, -depth / 2).b(w - .06, h * .75, .02, col, 0, h * .4, -depth + .01);
   else m.b(w, h, .03, col, w / 2, h / 2, .015).b(.03, Math.min(.16, h * .4), .02, SV, w - .08, h * .55, .04); // 문은 왼쪽 경첩
   return m.build(outline);
 }

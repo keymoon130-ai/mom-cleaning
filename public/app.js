@@ -1,8 +1,8 @@
 // 엄마의 대청소날~ — 화면 흐름 · 접속 · 대기실
-import { PROTO, MAPS, CFG } from './shared.js?v=21';
-import { audioInit, setVol, S, bgm } from './sfx.js?v=21';
-import { Editor, loadLook, saveLook } from './editor.js?v=21';
-import { Game } from './game.js?v=21';
+import { PROTO, MAPS, CFG } from './shared.js?v=22';
+import { audioInit, setVol, S, bgm } from './sfx.js?v=22';
+import { Editor, loadLook, saveLook } from './editor.js?v=22';
+import { Game } from './game.js?v=22';
 
 const $ = id => document.getElementById(id);
 const LS = {

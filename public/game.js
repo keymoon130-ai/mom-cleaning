@@ -1,8 +1,8 @@
 // 엄마의 대청소날~ — 게임 화면 (쥐 탈출 버전)
-import { CFG, FURN, HOUSE, ROT, WALL_H, ATTIC_Y, ATTIC_TOP, JUMP_V, house, moveBody, rayWorld, rayBox, blocked, placeName, josa, Sim } from './shared.js?v=21';
-import { THREE, buildFurn, buildPanel, buildMouse, buildKey, buildDoor, buildHole, mergeStatic, texBox } from './models.js?v=21';
-import { S, bgm, audioInit } from './sfx.js?v=21';
-import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=21';
+import { CFG, FURN, HOUSE, HOUSE_W, HOUSE_D, ROT, WALL_H, ATTIC_Y, ATTIC_TOP, JUMP_V, house, moveBody, rayWorld, rayBox, blocked, placeName, josa, Sim } from './shared.js?v=22';
+import { THREE, buildFurn, buildPanel, buildMouse, buildKey, buildDoor, buildHole, mergeStatic, texBox } from './models.js?v=22';
+import { S, bgm, audioInit } from './sfx.js?v=22';
+import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=22';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -91,11 +91,12 @@ export class Game {
       sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
       const sc = sun.shadow.camera; sc.left = -16; sc.right = 16; sc.top = 14; sc.bottom = -14; sc.near = 1; sc.far = 30; sun.shadow.bias = -.0015;
     }
-    const att = new THREE.PointLight(0xffd9a0, 1.6 * b, 9, 1.2); att.position.set(18.5, 3.6, 3.5); root.add(att);
+    const att = new THREE.PointLight(0xffd9a0, 1.6 * b, 9, 1.2); att.position.set(13, 3.6, 3); root.add(att);
     // 바닥
-    const fl = new THREE.Mesh(new THREE.PlaneGeometry(24, 18), new THREE.MeshLambertMaterial({ map: tex(cvs(32, 32, FLOOR1), 24, 18) }));
-    fl.rotation.x = -Math.PI / 2; fl.position.set(12, 0, 9); fl.receiveShadow = true; root.add(fl);
-    const mat_ = new THREE.Mesh(new THREE.PlaneGeometry(.9, .6), new THREE.MeshLambertMaterial({ color: 0x7a9a5a })); mat_.rotation.x = -Math.PI / 2; mat_.position.set(11.5, .003, 16.0); root.add(mat_);
+    const FW = HOUSE_W, FD = HOUSE_D + 3;
+    const fl = new THREE.Mesh(new THREE.PlaneGeometry(FW, FD), new THREE.MeshLambertMaterial({ map: tex(cvs(32, 32, FLOOR1), FW, FD) }));
+    fl.rotation.x = -Math.PI / 2; fl.position.set(FW / 2, 0, FD / 2); fl.receiveShadow = true; root.add(fl);
+    const mat_ = new THREE.Mesh(new THREE.PlaneGeometry(.9, .6), new THREE.MeshLambertMaterial({ color: 0x7a9a5a })); mat_.rotation.x = -Math.PI / 2; mat_.position.set(11.5, .003, HOUSE.door.z + 1); root.add(mat_);
     // 벽 · 천장 · 다락방
     const w1 = new THREE.MeshLambertMaterial({ map: tex(cvs(32, 72, WALL1)) }), w2 = new THREE.MeshLambertMaterial({ map: tex(cvs(32, 72, WALL2)) });
     const woodM = new THREE.MeshLambertMaterial({ color: 0xb07a4a }), ceilM = new THREE.MeshLambertMaterial({ color: 0xfff8ee }), atFl = new THREE.MeshLambertMaterial({ map: tex(cvs(32, 32, FLOOR2)) });
@@ -116,12 +117,13 @@ export class Game {
     }
     // 다락방 들보 · 창문 · 천장 등
     const beamM = new THREE.MeshLambertMaterial({ color: 0x5e432c });
-    for (let x = 15; x < 23; x += 2) { const bm = new THREE.Mesh(new THREE.BoxGeometry(.18, .18, 5), beamM); bm.position.set(x, ATTIC_TOP - .1, 3.5); root.add(bm); }
-    const win = new THREE.Mesh(new THREE.PlaneGeometry(.9, .6), new THREE.MeshBasicMaterial({ color: 0xbfe6ff })); win.position.set(18.5, 3.3, 1.005); root.add(win);
-    const bulb = new THREE.Mesh(new THREE.SphereGeometry(.07, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffe2a0 })); bulb.position.set(18.5, 3.7, 3.5); root.add(bulb);
+    const AT = HOUSE.attic;
+    for (let x = AT.x0 + 1; x < AT.x1; x += 2) { const bm = new THREE.Mesh(new THREE.BoxGeometry(.18, .18, AT.z1 - AT.z0), beamM); bm.position.set(x, ATTIC_TOP - .1, (AT.z0 + AT.z1) / 2); root.add(bm); }
+    const win = new THREE.Mesh(new THREE.PlaneGeometry(.9, .6), new THREE.MeshBasicMaterial({ color: 0xbfe6ff })); win.position.set(13.5, 3.3, 1.005); root.add(win);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(.07, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffe2a0 })); bulb.position.set(13, 3.7, 3); root.add(bulb);
     const lampM = new THREE.MeshBasicMaterial({ color: 0xfffbe8 }), lampG = new THREE.CylinderGeometry(.3, .34, .05, 16);
-    for (const [x, z] of [[4.5, 4], [5, 11], [12, 4.5], [12.5, 10], [19, 9.5], [17, 13]]) { const l = new THREE.Mesh(lampG, lampM); l.position.set(x, WALL_H - .03, z); root.add(l); }
-    const outside = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 2.2), new THREE.MeshBasicMaterial({ color: 0xfffbe0 })); outside.position.set(11.5, 1.1, 17.45); outside.rotation.y = Math.PI; root.add(outside);
+    for (const [x, z] of [[4, 3.5], [4, 9], [10.5, 5], [13, 8.5]]) { const l = new THREE.Mesh(lampG, lampM); l.position.set(x, WALL_H - .03, z); root.add(l); }
+    const outside = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 2.2), new THREE.MeshBasicMaterial({ color: 0xfffbe0 })); outside.position.set(11.5, 1.1, HOUSE.door.z + 2.45); outside.rotation.y = Math.PI; root.add(outside);
     // 가구
     const statics = []; this.liftObj = new Map();
     for (const P of W.placed) {
@@ -141,10 +143,10 @@ export class Game {
     });
     // 무거운 서랍 앞판 (열리면 열린 채로)
     this.heavyObj = W.heavies.map(h => {
-      const pn = buildPanel({ k: 'drawer', w: h.w, h: h.h }, 0x5e432c, ol); pn.position.set(h.x, h.y, h.z); pn.rotation.y = ROT[h.r]; root.add(pn); return pn;
+      const pn = buildPanel({ k: 'drawer', w: h.w, h: h.h }, 0x5e432c, ol, .4); pn.position.set(h.x, h.y, h.z); pn.rotation.y = ROT[h.r]; root.add(pn); return pn;
     });
     // 문 · 쥐구멍 · 열쇠
-    this.door = buildDoor(); this.door.position.set(12, 0, 15.06); this.door.rotation.y = Math.PI; root.add(this.door);
+    this.door = buildDoor(); this.door.position.set(12, 0, HOUSE.door.z + .06); this.door.rotation.y = Math.PI; root.add(this.door);
     this.holeObj = W.holes.map(pair => pair.map(h => { const o = buildHole(); o.position.set(h.x + h.dx * .006, h.y, h.z + h.dz * .006); o.rotation.y = Math.atan2(h.dx, h.dz); root.add(o); return o; }));
     this.keyObj = [0, 1, 2].map(() => { const k = buildKey(); k.scale.setScalar(1.3); root.add(k); return k; });
   }
@@ -525,7 +527,7 @@ export class Game {
       }
       case 'key': {
         if (m.act === 'get') { if (mine) { S.ping(); this.banner('🔑 열쇠 획득!', '현관문으로 가져가요 (들고 있으면 조금 느려요)', 2.2); } else if (this.role === 'mouse') this.addFeed(`🔑 ${josa(nm, '가')} 열쇠를 주웠어요!`); else this.addFeed('🔑 어딘가에서 열쇠가 사라졌어요…'); }
-        else if (m.act === 'in') { S.bell(); this.addFeed(`🔑 철컥! 현관문 열쇠 ${m.n} / ${CFG.KEYS}`); this.posSoundAt(11.5, .2, 14.95, 'open'); if (mine) this.banner(`철컥! ${m.n} / ${CFG.KEYS}`, m.n < CFG.KEYS ? '남은 열쇠도 찾아요!' : '', 1.8); }
+        else if (m.act === 'in') { S.bell(); this.addFeed(`🔑 철컥! 현관문 열쇠 ${m.n} / ${CFG.KEYS}`); this.posSoundAt(HOUSE.door.plate[0], .2, HOUSE.door.plate[1], 'open'); if (mine) this.banner(`철컥! ${m.n} / ${CFG.KEYS}`, m.n < CFG.KEYS ? '남은 열쇠도 찾아요!' : '', 1.8); }
         else if (m.act === 'drop') { if (mine) this.say('열쇠를 떨어뜨렸어요!'); }
         break;
       }
@@ -710,7 +712,7 @@ export class Game {
     for (let i = 0; i < 3; i++) slots[i * 2 + 1].visible = i < n;
     const dp = this.door.userData.panel; dp.rotation.y += ((this.W.doorOpen ? -1.75 : 0) - dp.rotation.y) * Math.min(1, this.dt * 3);
     // 무거운 서랍 (열렸으면 쭉 빠져 있음)
-    this.heavyObj.forEach((o, i) => { const h = this.W.heavies[i], k = this.HO[i] ? .32 : 0; o.position.set(h.x + h.nx * k, h.y, h.z + h.nz * k); });
+    this.heavyObj.forEach((o, i) => { const h = this.W.heavies[i], k = this.HO[i] ? .34 : 0; o.position.set(h.x + h.nx * k, h.y, h.z + h.nz * k); });
     // 쥐구멍 먼지
     this.holeObj.forEach((pair, pi) => pair.forEach(o => { o.userData.dust.visible = (this.holeLeft[pi] || 0) > 0; }));
     // 숨는 곳 열기 애니메이션
@@ -719,7 +721,7 @@ export class Game {
       const k = e < .2 ? e / .2 : e < 1.1 ? 1 : e < 1.4 ? 1 - (e - 1.1) / .3 : 0;
       const s = this.W.spots[si];
       if (so.k === 'lift') { so.g.position.y = so.g.userData.y0 + k * .5; so.g.rotation.z = k * .25; }
-      else if (so.k === 'drawer') so.g.position.set(so.x + s.nx * k * .3, s.y, so.z + s.nz * k * .3);
+      else if (so.k === 'drawer') so.g.position.set(so.x + s.nx * k * .26, s.y, so.z + s.nz * k * .26);
       else so.g.rotation.y = ROT[s.r] - k * 1.5;
       if (e >= 1.4) this.spotAnim.delete(si);
     }

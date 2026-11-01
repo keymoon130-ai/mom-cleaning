@@ -1,8 +1,8 @@
 // 엄마의 대청소날~ — 게임 화면 (쥐 탈출 버전)
-import { CFG, FURN, HOUSE, HOUSE_W, HOUSE_D, ROT, WALL_H, ATTIC_Y, ATTIC_TOP, JUMP_V, house, moveBody, rayWorld, rayBox, blocked, placeName, josa, Sim } from './shared.js?v=23';
-import { THREE, buildFurn, buildPanel, buildMouse, buildKey, buildDoor, buildHole, buildCat, buildTrap, mergeStatic, texBox } from './models.js?v=23';
-import { S, bgm, audioInit } from './sfx.js?v=23';
-import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=23';
+import { CFG, FURN, HOUSE, HOUSE_W, HOUSE_D, ROT, WALL_H, ATTIC_Y, ATTIC_TOP, JUMP_V, house, moveBody, rayWorld, rayBox, blocked, insideWall, placeName, josa, Sim } from './shared.js?v=24';
+import { THREE, buildFurn, buildPanel, buildMouse, buildKey, buildDoor, buildHole, buildCat, buildTrap, mergeStatic, merged, texBox } from './models.js?v=24';
+import { S, bgm, audioInit } from './sfx.js?v=24';
+import { Editor, lookToCanvas, loadLook, defaultLook } from './editor.js?v=24';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -101,20 +101,23 @@ export class Game {
     const w1 = new THREE.MeshLambertMaterial({ map: tex(cvs(32, 72, WALL1)) }), w2 = new THREE.MeshLambertMaterial({ map: tex(cvs(32, 72, WALL2)) });
     const woodM = new THREE.MeshLambertMaterial({ color: 0xb07a4a }), ceilM = new THREE.MeshLambertMaterial({ color: 0xfff8ee }), atFl = new THREE.MeshLambertMaterial({ map: tex(cvs(32, 32, FLOOR2)) });
     const roofM = new THREE.MeshLambertMaterial({ color: 0x4a3424 }), stepM = new THREE.MeshLambertMaterial({ color: 0xc98a55 });
+    const shells = [];
     for (const bx of W.boxes) {
       if (bx.k === 'f' || bx.k === 'door') continue;
       const w = bx.x1 - bx.x0, h = bx.y1 - bx.y0, d = bx.z1 - bx.z0;
       let m;
       if (bx.k === 'wall' || bx.k === 'iwall') m = texBox(w, h, d, w1);
       else if (bx.k === 'awall') m = texBox(w, h, d, w2);
-      else if (bx.k === 'slab') { m = texBox(w, h, d, [woodM, woodM, atFl, ceilM, woodM, woodM]); atFl.map.repeat.set(1, 1); }
+      else if (bx.k === 'slab') m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), ceilM);
       else if (bx.k === 'roof') m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), roofM);
       else if (bx.k === 'stair') m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), stepM);
       else m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), woodM);
       m.position.set((bx.x0 + bx.x1) / 2, (bx.y0 + bx.y1) / 2, (bx.z0 + bx.z1) / 2);
-      m.receiveShadow = true; m.castShadow = this.shadows && (bx.k === 'wall' || bx.k === 'stair');
-      root.add(m);
+      shells.push(m);
     }
+    // 다락방 바닥 (무늬)
+    { const A = HOUSE.attic, af = new THREE.Mesh(new THREE.PlaneGeometry(A.x1 - A.x0, A.z1 - A.z0), new THREE.MeshLambertMaterial({ map: tex(cvs(32, 32, FLOOR2), A.x1 - A.x0, A.z1 - A.z0) })); af.rotation.x = -Math.PI / 2; af.position.set((A.x0 + A.x1) / 2, ATTIC_Y + .002, (A.z0 + A.z1) / 2); af.receiveShadow = true; root.add(af); }
+    const shell = mergeStatic(shells); shell.traverse(o => { if (o.isMesh) { o.receiveShadow = true; o.castShadow = this.shadows && o.material !== ceilM; } }); root.add(shell);
     // 다락방 들보 · 창문 · 천장 등
     const beamM = new THREE.MeshLambertMaterial({ color: 0x5e432c });
     const AT = HOUSE.attic;
@@ -128,7 +131,7 @@ export class Game {
     const statics = []; this.liftObj = new Map();
     for (const P of W.placed) {
       const gr = buildFurn(P.t, ol); gr.position.set(P.x, P.y, P.z); gr.rotation.y = ROT[P.r];
-      if (FURN[P.t].lift) { root.add(gr); this.liftObj.set(P.fi, gr); gr.userData.y0 = P.y; } else statics.push(gr);
+      if (FURN[P.t].lift) { const m2 = merged(buildFurn(P.t, ol)); m2.position.set(P.x, P.y, P.z); m2.rotation.y = ROT[P.r]; root.add(m2); this.liftObj.set(P.fi, m2); m2.userData.y0 = P.y; } else statics.push(gr);
     }
     root.add(mergeStatic(statics));
     // 숨는 곳 문짝 · 서랍
@@ -443,6 +446,7 @@ export class Game {
           p.fl = fl; p.hidden = !!(fl & 1); p.caught = !!(fl & 4); p.esc = !!(fl & 64);
           if (id === this.me) continue;
           if (p.hidden && this.role === 'mom') continue;
+          const lb = p.buf[p.buf.length - 1]; if (lb && Math.hypot(lb[1] - x, lb[2] - y, lb[3] - z) > 1) p.buf = []; // 순간이동은 이어 그리지 않음
           p.buf.push([now, x, y, z, a]); if (p.buf.length > 12) p.buf.shift();
           if (p.caught || p.buf.length === 1) { p.x = x; p.y = y; p.z = z; p.a = a; }
         }
@@ -651,7 +655,11 @@ export class Game {
       const B = B_[i], A = B_[Math.max(0, i - 1)];
       const k = B[0] === A[0] ? 1 : clamp((rt - A[0]) / (B[0] - A[0]), 0, 1);
       const ox = p.x, oz = p.z;
-      p.x = A[1] + (B[1] - A[1]) * k; p.y = A[2] + (B[2] - A[2]) * k; p.z = A[3] + (B[3] - A[3]) * k; p.a = A[4] + angDiff(B[4], A[4]) * k;
+      const nx = A[1] + (B[1] - A[1]) * k, ny = A[2] + (B[2] - A[2]) * k, nz = A[3] + (B[3] - A[3]) * k;
+      // 이어 그린 자리가 벽 속이면 (모퉁이 가로지르기) 그 프레임은 멈춰 있는다
+      if (!(p.hidden) && insideWall(this.W, nx, ny, nz, p.role === 'mom' ? .2 : .04)) { if (insideWall(this.W, p.x, p.y, p.z, p.role === 'mom' ? .2 : .04)) { p.x = B[1]; p.y = B[2]; p.z = B[3]; } }
+      else { p.x = nx; p.y = ny; p.z = nz; }
+      p.a = A[4] + angDiff(B[4], A[4]) * k;
       if (p.role === 'mom' && !p.gone && Math.hypot(p.x - ox, p.z - oz) > .01) { p.stepT = (p.stepT || 0) - dt; if (p.stepT <= 0) { p.stepT = .42; this.posSoundAt(p.x, p.y, p.z, 'step'); } }
     }
     for (const a of [this.bubbles, this.pings, this.fx]) for (const x of a) x.t += dt;
@@ -689,7 +697,7 @@ export class Game {
       else {
         const ty = T.y + .07, want = .62;
         const hit = rayWorld(this.W, T.x, ty, T.z, -f.x, -f.y, -f.z, want + .05);
-        const d = clamp(hit - .05, .1, want);
+        const d = clamp(hit - .04, .015, want);
         this.camDist = d < this.camDist ? d : this.camDist + (d - this.camDist) * Math.min(1, this.dt * 4);
         const D = this.camDist;
         // 올려다볼 때는 바닥을 따라 미끄러지게 (바닥 밑으로 안 내려감)
@@ -719,8 +727,9 @@ export class Game {
       o.visible = vis; if (!vis) continue;
       if (p.role === 'mom') {
         const mv = self ? this.moving : !!(p.fl & 2);
-        o.position.set(p.x, p.y + (mv ? Math.abs(Math.sin(tt * 8)) * .05 : 0), p.z);
-        o.rotation.set(0, Math.atan2(cx - p.x, cz - p.z), 0); // 좌우로만 돌아 나를 본다 (항상 바닥에 수직)
+        const vx = cx - p.x, vz = cz - p.z, vd = Math.hypot(vx, vz) || 1, sh = clamp(vd - .35, 0, .26); // 벽에 안 박히게 보는 쪽으로 살짝
+        o.position.set(p.x + vx / vd * sh, p.y + (mv ? Math.abs(Math.sin(tt * 8)) * .05 : 0), p.z + vz / vd * sh);
+        o.rotation.set(0, Math.atan2(vx, vz), 0); // 좌우로만 돌아 나를 본다 (항상 바닥에 수직)
         o.userData.plane.material.color.setHex((p.fl & 16) ? 0x9fb4ff : 0xffffff);
       } else {
         if (p.caught) { const i = caught.indexOf(p); o.position.set(CAGE[0] - .18 + (i % 4) * .12, .03, CAGE[1] - .08 + (i >> 2) * .14); o.rotation.set(0, i * 1.3, 0); }

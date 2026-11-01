@@ -1,6 +1,6 @@
 // 3D 모델 — 전부 단순한 도형 조합 + 만화 외곽선
 import * as THREE from './vendor/three.module.min.js';
-import { FURN } from './shared.js?v=23';
+import { FURN } from './shared.js?v=24';
 
 const OL = .011; // 외곽선 두께
 const GEO = {};
@@ -71,7 +71,7 @@ export function buildPanel(s, col, outline = true, depth = .3) {
     .b(.02, h * .75, depth, col, -(w / 2 - .03), h * .4, -depth / 2).b(.02, h * .75, depth, col, w / 2 - .03, h * .4, -depth / 2)
     .b(w - .06, .02, depth, col, 0, .03, -depth / 2).b(w - .06, h * .75, .02, col, 0, h * .4, -depth + .01);
   else m.b(w, h, .03, col, w / 2, h / 2, .015).b(.03, Math.min(.16, h * .4), .02, SV, w - .08, h * .55, .04); // 문은 왼쪽 경첩
-  return m.build(outline);
+  return merged(m.build(outline));
 }
 
 // 쥐 (앞 = +z), 키 약 .1
@@ -84,12 +84,13 @@ export function buildMouse(col, outline = true) {
     .s(.007, .008, .005, 0x111111, -.017, .072, .098, false).s(.007, .008, .005, 0x111111, .017, .072, .098, false)
     .s(.012, .008, .016, PK, -.025, .008, .04, false).s(.012, .008, .016, PK, .025, .008, .04, false)
     .s(.012, .008, .016, PK, -.028, .008, -.05, false).s(.012, .008, .016, PK, .028, .008, -.05, false);
-  const g = m.build(outline, .004);
+  const g = merged(m.build(outline, .004));
   // 꼬리 (흔들리게 따로)
   const tail = new THREE.Group(); tail.position.set(0, .03, -.08);
   const tm = mat(PK);
-  for (let i = 0; i < 6; i++) { const c = new THREE.Mesh(cylG(1, 6), tm); c.scale.set(.008, .03, .008); c.rotation.x = Math.PI / 2 + .25; c.position.set(0, .006 * i, -.026 * i); tail.add(c); }
-  g.add(tail); g.userData.tail = tail;
+  const tp = new THREE.Group();
+  for (let i = 0; i < 6; i++) { const c = new THREE.Mesh(cylG(1, 6), tm); c.scale.set(.008, .03, .008); c.rotation.x = Math.PI / 2 + .25; c.position.set(0, .006 * i, -.026 * i); tp.add(c); }
+  tail.add(mergeStatic([tp])); g.add(tail); g.userData.tail = tail;
   // 입에 문 열쇠
   const key = buildKey(); key.scale.setScalar(.75); key.rotation.set(0, Math.PI / 2, 0); key.position.set(0, .05, .13); key.visible = false;
   g.add(key); g.userData.key = key;
@@ -99,7 +100,7 @@ export function buildMouse(col, outline = true) {
 export function buildKey() {
   const m = new Mk(), K = 0xf2c230;
   m.t(.035, K, -.06, 0, 0, 0, 0, 0).b(.11, .018, .012, K, .01, 0, 0).b(.012, .03, .012, K, .045, -.02, 0).b(.012, .022, .012, K, .065, -.016, 0);
-  return m.build(false);
+  return merged(m.build(false));
 }
 // 현관문 (경첩 = 왼쪽, 문 너비 1)
 export function buildDoor() {
@@ -107,7 +108,7 @@ export function buildDoor() {
   m.b(1, 2.1, .08, 0x9a6a3c, .5, 1.05, 0).b(.86, .8, .02, 0xb07a4a, .5, 1.55, .045, 0, 0, 0, false).b(.86, .7, .02, 0xb07a4a, .5, .62, .045, 0, 0, 0, false)
     .s(.04, .04, .04, YL, .88, 1.0, .07)
     .b(.5, .22, .02, 0x6b4a33, .5, .17, .05); // 열쇠 판 (쥐 높이)
-  const panel = m.build(true);
+  const panel = merged(m.build(true));
   const slots = [];
   for (let i = 0; i < 3; i++) {
     const s = new THREE.Mesh(boxG(), new THREE.MeshBasicMaterial({ color: 0x1a1210 })); s.scale.set(.08, .1, .01); s.position.set(.34 + i * .16, .17, .062); panel.add(s); slots.push(s);
@@ -123,7 +124,7 @@ export function buildHole() {
   const hole = new THREE.Mesh(new THREE.CircleGeometry(.085, 16, 0, Math.PI), new THREE.MeshBasicMaterial({ color: 0x120a06 }));
   g.add(hole);
   const rim = new THREE.Mesh(new THREE.RingGeometry(.085, .1, 16, 1, 0, Math.PI), new THREE.MeshBasicMaterial({ color: 0x5e432c })); rim.position.z = .001; g.add(rim);
-  const dust = new Mk().s(.06, .05, .04, 0xb8b2a8, 0, .03, .02).s(.045, .04, .035, 0xa8a298, -.05, .025, .03).s(.04, .035, .03, 0xc8c2b8, .05, .02, .03).s(.03, .03, .025, 0x989288, .01, .07, .025).build(true, .004);
+  const dust = merged(new Mk().s(.06, .05, .04, 0xb8b2a8, 0, .03, .02).s(.045, .04, .035, 0xa8a298, -.05, .025, .03).s(.04, .035, .03, 0xc8c2b8, .05, .02, .03).s(.03, .03, .025, 0x989288, .01, .07, .025).build(true, .004));
   dust.visible = false; g.add(dust); g.userData.dust = dust;
   return g;
 }
@@ -137,9 +138,11 @@ export function buildCat(outline = true) {
     .s(.012, .009, .008, PK, 0, .245, .3, false)
     .b(.035, .12, .035, O, -.06, .06, .12).b(.035, .12, .035, O, .06, .06, .12).b(.035, .12, .035, O, -.06, .06, -.12).b(.035, .12, .035, O, .06, .06, -.12)
     .b(.02, .02, .1, DK2, -.08, .245, .29, 0, .4, 0, false).b(.02, .02, .1, DK2, .08, .245, .29, 0, -.4, 0, false);
-  const g = m.build(outline, .006);
+  const g = merged(m.build(outline, .006));
   const tail = new THREE.Group(); tail.position.set(0, .2, -.19);
-  for (let i = 0; i < 5; i++) { const c = new THREE.Mesh(cylG(1, 6), mat(O)); c.scale.set(.03, .06, .03); c.position.set(0, .05 * i, -.015 * i); tail.add(c); }
+  const tp = new THREE.Group();
+  for (let i = 0; i < 5; i++) { const c = new THREE.Mesh(cylG(1, 6), mat(O)); c.scale.set(.03, .06, .03); c.position.set(0, .05 * i, -.015 * i); tp.add(c); }
+  tail.add(mergeStatic([tp]));
   g.add(tail); g.userData.tail = tail;
   return g;
 }
@@ -147,7 +150,7 @@ export function buildCat(outline = true) {
 export function buildTrap() {
   const m = new Mk();
   m.b(.16, .015, .09, 0xc98a55, 0, .0075, 0).b(.14, .006, .006, SV, 0, .02, .03).b(.006, .006, .07, SV, -.06, .02, 0).b(.006, .006, .07, SV, .06, .02, 0).b(.03, .008, .025, YL, .02, .019, -.01);
-  return m.build(true, .004);
+  return merged(m.build(true, .004));
 }
 
 // 가구 높이 · 크기
@@ -159,7 +162,7 @@ export function mergeStatic(groups) {
   for (const g of groups) {
     g.updateMatrixWorld(true);
     g.traverse(o => {
-      if (!o.isMesh) return;
+      if (!o.isMesh || o.userData.keep) return;
       let geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
       geo.applyMatrix4(o.matrixWorld);
       const k = o.material; if (!byMat.has(k)) byMat.set(k, []);
@@ -169,10 +172,12 @@ export function mergeStatic(groups) {
   const out = new THREE.Group();
   for (const [m, list] of byMat) {
     let n = 0; for (const g of list) n += g.attributes.position.count;
-    const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3); let o = 0;
-    for (const g of list) { pos.set(g.attributes.position.array, o * 3); nor.set(g.attributes.normal.array, o * 3); o += g.attributes.position.count; g.dispose(); }
+    const hasUV = list.every(g => g.attributes.uv);
+    const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), uv = hasUV ? new Float32Array(n * 2) : null; let o = 0;
+    for (const g of list) { pos.set(g.attributes.position.array, o * 3); nor.set(g.attributes.normal.array, o * 3); if (uv) uv.set(g.attributes.uv.array, o * 2); o += g.attributes.position.count; g.dispose(); }
     const bg = new THREE.BufferGeometry();
     bg.setAttribute('position', new THREE.BufferAttribute(pos, 3)); bg.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    if (uv) bg.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     bg.computeBoundingSphere();
     const mesh = new THREE.Mesh(bg, m);
     if (m !== outlineMat) { mesh.castShadow = true; mesh.receiveShadow = true; }
@@ -180,6 +185,8 @@ export function mergeStatic(groups) {
   }
   return out;
 }
+// 한 물체를 재질별 덩어리로 (움직이는 건 통째로 움직이게)
+export function merged(g) { const out = mergeStatic([g]); for (const c of [...g.children]) if (c.userData.keep) out.add(c); return out; }
 // 상자인데 무늬가 늘어나지 않게 (가로 길이만큼 반복)
 export function texBox(w, h, d, material) {
   const g = new THREE.BoxGeometry(w, h, d), uv = g.attributes.uv;

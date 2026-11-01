@@ -109,7 +109,7 @@ export const HOUSE = {
     ...Array(11).fill('#................#'),
     '###########+######'
   ],
-  // 1층 칸막이 벽 [x0, z0, x1, z1] (두께 .14) + 문틀 3곳 (문틀 위 상인방)
+  // 1층 칸막이 벽 [x0, z0, x1, z1] (두께 .25) + 문틀 3곳 (문틀 위 상인방)
   iwalls: [[7.5, 1, 7.5, 3.0], [7.5, 4.2, 7.5, 8.8], [7.5, 10.0, 7.5, 12], [1, 6, 5.0, 6], [6.2, 6, 7.5, 6]],
   lintels: [[7.5, 3.0, 7.5, 4.2], [7.5, 8.8, 7.5, 10.0], [5.0, 6, 6.2, 6]],
   // [가구, x, z, 방향(0 = 등이 북쪽, 1 = 동쪽, 2 = 남쪽, 3 = 서쪽), 바닥 높이]
@@ -124,7 +124,7 @@ export const HOUSE = {
     ['rug', 4.4, 8.9, 0],
     ['bed', 1.97, 7.3, 3], ['desk', 4.3, 11.68, 2], ['ochair', 4.3, 10.95, 0],
     ['chest', 1.25, 10.0, 3], ['ladder', 6.4, 11.78, 2], ['cbox', 6.3, 7.6, 0],
-    ['hchest', 3.6, 6.33, 0], ['hchest', 7.17, 7.4, 1],
+    ['hchest', 3.6, 6.39, 0], ['hchest', 7.1, 7.4, 1],
     // 거실 (x 7.5~17) — 계단 · 소파 · TV · 현관
     ['rug', 14.5, 7.0, 1],
     ['tvstand', 16.77, 7.0, 1], ['sofa', 13.4, 7.0, 3], ['coffee', 14.9, 7.0, 3], ['lamp', 16.5, 9.2, 0],
@@ -190,8 +190,9 @@ function buildHouse() {
     }
   }
   // 칸막이 벽 · 문틀 위
-  for (const [x0, z0, x1, z1] of H.iwalls) add(x0 - (x0 === x1 ? .07 : 0), x1 + (x0 === x1 ? .07 : 0), 0, WALL_H, z0 - (z0 === z1 ? .07 : 0), z1 + (z0 === z1 ? .07 : 0), 'iwall');
-  for (const [x0, z0, x1, z1] of H.lintels) add(x0 - (x0 === x1 ? .07 : 0), x1 + (x0 === x1 ? .07 : 0), 2.0, WALL_H, z0 - (z0 === z1 ? .07 : 0), z1 + (z0 === z1 ? .07 : 0), 'iwall');
+  const T2 = .125;
+  for (const [x0, z0, x1, z1] of H.iwalls) add(x0 - (x0 === x1 ? T2 : 0), x1 + (x0 === x1 ? T2 : 0), 0, WALL_H, z0 - (z0 === z1 ? T2 : 0), z1 + (z0 === z1 ? T2 : 0), 'iwall');
+  for (const [x0, z0, x1, z1] of H.lintels) add(x0 - (x0 === x1 ? T2 : 0), x1 + (x0 === x1 ? T2 : 0), 2.0, WALL_H, z0 - (z0 === z1 ? T2 : 0), z1 + (z0 === z1 ? T2 : 0), 'iwall');
   // 문 (닫혀 있을 때만 막힘)
   add(H.door.x0, H.door.x1, 0, 2.1, H.door.z, H.door.z + .14, 'door');
   add(H.door.x0, H.door.x1, 2.1, WALL_H, H.door.z, H.door.z + 1, 'wall');
@@ -317,6 +318,15 @@ export function moveBody(W, b, dx, dz, dt, P) {
   b.y = ny;
 }
 
+// 그 자리가 벽 속인지 (r = 몸 반지름. 가구 · 계단은 안 봄)
+const WALLK = { wall: 1, iwall: 1, awall: 1, door: 1, rail: 1 };
+export function insideWall(W, x, y, z, r = .05) {
+  for (const b of near(W, x - r, x + r, z - r, z + r)) {
+    if (!WALLK[b.k]) continue;
+    if (x + r > b.x0 && x - r < b.x1 && z + r > b.z0 && z - r < b.z1 && y + .05 > b.y0 && y + .02 < b.y1) return true;
+  }
+  return false;
+}
 // 광선이 상자에 닿는 거리 (안 닿으면 Infinity)
 export function rayBox(ox, oy, oz, dx, dy, dz, b, max = 1e9) {
   let t0 = 0, t1 = max;
@@ -465,7 +475,13 @@ export class Sim {
         const dt = Math.min(1, (now - p.lastT) / 1000); p.lastT = now;
         const sp = p.role === 'mom' ? CFG.SPEED.mom : CFG.SPEED.mouse;
         const max = sp * dt * 1.6 + .35, d = Math.hypot(x - p.x, z - p.z);
-        if (d > max) { const k = max / d; x = p.x + (x - p.x) * k; z = p.z + (z - p.z) * k; this.to(id, { type: 'fix', x: r2(x), y: r2(y), z: r2(z) }); }
+        if (d > max) {
+          const k = max / d; x = p.x + (x - p.x) * k; z = p.z + (z - p.z) * k;
+          const was = this.W.doorOpen; this.W.doorOpen = this.doorOpen;
+          if (insideWall(this.W, x, y, z, p.role === 'mom' ? .2 : .04)) { x = p.x; z = p.z; y = p.y; }
+          this.W.doorOpen = was;
+          this.to(id, { type: 'fix', x: r2(x), y: r2(y), z: r2(z) });
+        }
         p.x = clampN(x, .9, HOUSE_W - .9); p.z = clampN(z, .9, HOUSE.door.z + (this.doorOpen ? 2.6 : .2)); p.y = clampN(y, 0, ATTIC_TOP);
         if (Number.isFinite(+m.a)) p.a = +m.a;
         p.mv = m.mv ? 1 : 0;
